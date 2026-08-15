@@ -1,4 +1,4 @@
-[中文](README.md) | **English**
+[中文](README.md) · English
 
 <div align="center">
 
@@ -6,7 +6,7 @@
 
 **Zero-config desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh)**
 
-Install it, double-click it. No Node.js, pnpm, or terminal needed.
+Install and run. No Node.js, pnpm, or terminal required.
 
 <!-- TODO: replace with a real screenshot of the main window -->
 ![DSH Desktop main window](docs/images/screenshot-main.png)
@@ -30,13 +30,13 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The installer bundles the whole runtime — Node, a pnpm shim, and dsh. Nothing to preinstall.
 - The Web UI runs unmodified: workspaces, sessions, approvals, models, skills, and terminals all work inside the app window, because DSH Desktop is just the shell around `dsh web`.
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
-- Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and close-to-tray keeps long runs out of the way.
+- Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - The tray menu includes a plugin manager; installing third-party dsh plugins needs no Node/pnpm on the machine.
-- Updates ask before installing and back up your sessions, credentials, and settings first.
+- Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
 ## Install
 
-Grab the latest `DSH Desktop Setup x.x.x.exe` from [**Releases**](https://github.com/qinyre/dsh-Desktop/releases) and run it.
+Download the latest `DSH Desktop Setup x.x.x.exe` from the [Releases](https://github.com/qinyre/dsh-Desktop/releases) page and run it.
 
 <!-- TODO: add a Releases download badge/link once the first release is published -->
 
@@ -44,7 +44,7 @@ Requirements: Windows 10/11 x64.
 
 ### First run
 
-The app starts the sidecar and opens the dsh Web UI. Configure your API key in **Settings → Models** (same onboarding as the Web UI), pick a workspace, and start chatting.
+The app starts the sidecar and opens the dsh Web UI. Onboarding is identical to the browser version: set your API key in **Settings → Models** and choose a workspace directory.
 
 ## Plugins
 
@@ -54,15 +54,9 @@ DSH Desktop keeps all three of dsh's plugin capability layers:
 |---|---|
 | Per-session dynamic mounting | Choose the `cordis` agent preset in the Web UI — the agent writes and mounts plugins at runtime, no restart |
 | Plugin inventory & config | Settings → Plugins, as in the Web UI |
-| Third-party plugin packages | **Tray → 插件管理…** (Plugin Manager) |
+| Third-party plugin packages | Install via the plugin manager in the tray menu |
 
-The plugin manager installs into the app's own profile, e.g.:
-
-```text
-@linxin666/dsh-web-ui-all
-```
-
-then click **重启生效** (restart to apply). Removing a plugin works the same way. Install output streams into the dialog, including pnpm's `allowBuilds` guidance for git-hosted plugins.
+The plugin manager installs packages into the app's own profile: enter a package name (e.g. `@linxin666/dsh-web-ui-all`), install, then click **重启生效** (restart to apply) to load it. Removal works the same way. Install output streams into the dialog, including pnpm's `allowBuilds` guidance for git-hosted plugins.
 
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 
@@ -70,7 +64,7 @@ then click **重启生效** (restart to apply). Removing a plugin works the same
 
 DSH Desktop is an Electron shell. On launch it reuses the Electron binary as a Node runtime (`ELECTRON_RUN_AS_NODE`) to spawn `dsh web --port 0 --host 127.0.0.1` as a child process, reads the actual port from the readiness line on stdout, and points the window at `http://127.0.0.1:<port>`. The app carries a single runtime (no Node version drift), and the server binds a random loopback port only, never exposed to the network.
 
-One security note: the local HTTP API has no authentication. That is upstream's design — the Origin fence guards against DNS rebinding, not local processes. Any process running as your user can talk to it, but such a process could just as well read dsh's on-disk credentials directly, so the marginal exposure is limited to "this machine is already compromised." See the upstream [connection docs](https://github.com/deepseek-ai/deepseek-harness) for the fence's exact scope.
+The local HTTP API has no authentication — that is upstream's design, and the Origin fence guards against DNS rebinding, not local processes. Any process running as your user can talk to it, but such a process could just as well read dsh's on-disk credentials directly, so the added exposure only matters once the machine is already compromised. See the upstream [connection docs](https://github.com/deepseek-ai/deepseek-harness) for the fence's exact scope.
 
 ## Development
 
@@ -98,7 +92,7 @@ Dev mode resolves the upstream checkout at `../deepseek-harness` (override with 
 
 ### Known patch
 
-`patches/` carries one patch-package patch: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which fatal-errors under Electron's embedded Node (`FATAL ERROR: Error::New napi_get_last_error_info` — plain Node is unaffected), so packaged builds died right after a folder was picked ("win32 folder dialog worker exited before reporting a result"). The patch switches the read to per-unit `koffi.decode()`; it is applied automatically by the postinstall hook after `npm ci`, and `npm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child. If a dsh upgrade breaks the patch, patch-package fails loudly at install time instead of silently regressing.
+`patches/` carries one patch-package patch. dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`, applied automatically by the postinstall hook after `npm ci`; `npm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child, and a dsh upgrade that breaks the patch fails loudly at install time instead of silently regressing.
 
 ### Project layout
 
