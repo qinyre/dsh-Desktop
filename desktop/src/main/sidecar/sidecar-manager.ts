@@ -19,8 +19,21 @@ type Listener<K extends keyof SidecarEvents> = (payload: Parameters<SidecarEvent
 export class SidecarManager {
   private child: ChildProcess | undefined
   private timer: NodeJS.Timeout | undefined
+  /** 超时判死路径已发出、尚未等到 exit 的 kill。stop()/restart() 要等它落地，避免新旧 sidecar 并存。 */
+  private terminating: Promise<void> | undefined
   private restarts = 0
   private stopping = false
+  /**
+   * 单调递增的轮次号：每次 spawnSidecar() 与 stop()/restart() 各推进一次。
+   * 超时落死的 .then、ready 行的接受、退避回调都捕获各自创建时的轮次，
+   * 轮次已过（被 stop/restart/新一轮 spawn 接管）时不得再翻转状态或再 spawn——
+   * 否则 stop 后终局的 idle 会被迟到的 failed 覆盖、restart 新一轮会被旧轮落死卡死。
+   */
+  private epoch = 0
+  /** stop()/restart() 串行链：await killSidecar 的挂起点上并发调用不得交错（孤儿 child / 撤销 stop）。 */
+  private ops: Promise<void> = Promise.resolve()
+  /** 进行中的 restart：重叠调用合并为同一次"杀旧+换新"，保证恰好拉起一个新 child。 */
+  private inflightRestart: Promise<void> | undefined
   private _state: SidecarState = 'idle'
   private _port: number | undefined
   private readonly listeners: { [K in keyof SidecarEvents]?: Listener<K>[] } = {}
@@ -58,6 +71,7 @@ export class SidecarManager {
 
   start(): void {
     this.stopping = false
+    this.restarts = 0 // 上一轮 failed 耗尽的预算不得带进新一轮
     this.spawnSidecar()
   }
 
@@ -70,45 +84,96 @@ export class SidecarManager {
   /**
    * "重启生效"（设计书 §7）：装完插件后 sidecar 处于 ready，retry() 是 no-op——
    * 必须走本方法：终止当前 child 并等待 exit，复位计数后重新 spawn（新端口）。
+   * stop() 之后的 restart 是明确的用户意图，等同全新 start。重叠调用合并为一次。
    */
-  async restart(): Promise<void> {
-    if (this._state === 'failed') {
-      this.restarts = 0
-      this.start()
-      return
+  restart(): Promise<void> {
+    if (this.inflightRestart === undefined) {
+      this.inflightRestart = this.runSerialized(() => this.doRestart())
     }
-    if (this.timer !== undefined) clearTimeout(this.timer)
-    this.stopping = true // 旧 child 的 exit 不触发 crashed/退避
-    if (this.child !== undefined) await killSidecar(this.child, process.platform)
-    this.child = undefined
-    this._port = undefined
-    this.stopping = false
-    this.restarts = 0
-    this.spawnSidecar()
+    return this.inflightRestart
   }
 
-  async stop(): Promise<void> {
+  /** 停止是终局：idle、不重启；旧一轮迟到的落死/退避/ready 不得再翻转状态。 */
+  stop(): Promise<void> {
+    return this.runSerialized(() => this.doStop())
+  }
+
+  /** 把 op 排到串行链上执行（FIFO）；链吞掉前序失败，调用方拿到自己这次 op 的结果。 */
+  private runSerialized(op: () => Promise<void>): Promise<void> {
+    const next = this.ops.then(op, op)
+    this.ops = next.then(() => {}, () => {})
+    return next
+  }
+
+  private async doRestart(): Promise<void> {
+    try {
+      if (this._state === 'failed') {
+        this.restarts = 0
+        this.stopping = false
+        this.spawnSidecar()
+        return
+      }
+      this.epoch += 1 // 旧一轮的超时落死/退避/ready 全部失效
+      this.stopping = true // 旧 child 的 exit 不触发 crashed/退避
+      this.clearTimer()
+      await this.terminateCurrent()
+      this._port = undefined
+      this.stopping = false
+      this.restarts = 0
+      this.spawnSidecar()
+    } finally {
+      // 同步清掉（在 promise settle 之前）：await 完成后紧接的 restart 是新一轮，不得被合并掉。
+      this.inflightRestart = undefined
+    }
+  }
+
+  private async doStop(): Promise<void> {
+    this.epoch += 1 // 旧一轮的一切后续（超时落死、退避、ready）失效
     this.stopping = true
-    if (this.timer !== undefined) clearTimeout(this.timer)
-    if (this.child !== undefined) await killSidecar(this.child, process.platform)
-    this.child = undefined
+    this.clearTimer()
+    await this.terminateCurrent()
     this._port = undefined
+    this.restarts = 0
     this.setState('idle')
+  }
+
+  private clearTimer(): void {
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer)
+      this.timer = undefined
+    }
+  }
+
+  /** 杀当前 child 并等 exit；超时判死已 detach 的在途 kill 也一并等完——返回时旧进程确已终止。 */
+  private async terminateCurrent(): Promise<void> {
+    if (this.child !== undefined) {
+      const old = this.child
+      this.child = undefined
+      await killSidecar(old, process.platform)
+    } else if (this.terminating !== undefined) {
+      await this.terminating
+    }
+    this.terminating = undefined
   }
 
   private spawnSidecar(): void {
     const { command, args, cwd } = this.opts.runtime()
     this.opts.logger.rotateSync()
     const child = (this.opts.spawnFn ?? spawn)(command, args, { cwd, env: this.opts.env, stdio: ['ignore', 'pipe', 'pipe'] })
+    const epoch = ++this.epoch
     this.child = child
     this._port = undefined
     this.setState('spawning')
+
+    let timedOut = false // 本轮超时判死后不再接受 ready 行：垂死 child 不得报"已连上"
 
     const feed = (stream: NodeJS.ReadableStream): void => {
       createInterface({ input: stream }).on('line', (line) => {
         this.opts.logger.appendLine(line)
         const port = parseReadyPort(line)
-        if (port !== undefined && this._state === 'spawning') {
+        // 只有"当前轮次、未判死"的 child 才能宣布 ready：旧 child 迟到的端口行
+        // （restart 后才 flush 出来）不得污染新一轮的端口与 ready 事件。
+        if (port !== undefined && this._state === 'spawning' && epoch === this.epoch && !timedOut) {
           this._port = port
           this.restarts = 0
           this.setState('ready')
@@ -120,11 +185,17 @@ export class SidecarManager {
     feed(child.stderr!)
 
     const readyTimer = this.timer = setTimeout(() => {
-      if (this._state !== 'spawning') return
-      // 超时判死：先 detach，kill 引发的 exit 走"非当前 child"分支，
+      if (this._state !== 'spawning' || epoch !== this.epoch) return
+      timedOut = true
+      // 超时判死：先 detach，kill 引起的 exit 走"非当前 child"分支，
       // 不被 exit 处理器当成崩溃重启——超时的语义是 failed，不是 crashed+重启。
       this.child = undefined
-      void killSidecar(child, process.platform).then(() => this.setState('failed'))
+      this.terminating = killSidecar(child, process.platform)
+      void this.terminating.then(() => {
+        // 等到 exit 时轮次可能已被 stop()/restart() 接管：迟到的落死不得把
+        // stop 后的 idle / restart 新一轮的 spawning 改成 failed（并孤儿化新 child）。
+        if (epoch === this.epoch) this.setState('failed')
+      })
     }, this.opts.readyTimeoutMs ?? 30_000)
 
     child.once('exit', () => {
@@ -139,7 +210,11 @@ export class SidecarManager {
         this.setState('failed')
         return
       }
-      this.timer = setTimeout(() => { if (!this.stopping) this.spawnSidecar() }, (this.opts.backoffFn ?? backoffDelayMs)(this.restarts))
+      this.timer = setTimeout(() => {
+        // 已触发但尚未出队的退避回调（clearTimeout 追不上）由轮次号拦截，避免双 spawn。
+        if (this.stopping || epoch !== this.epoch) return
+        this.spawnSidecar()
+      }, (this.opts.backoffFn ?? backoffDelayMs)(this.restarts))
     })
   }
 }
