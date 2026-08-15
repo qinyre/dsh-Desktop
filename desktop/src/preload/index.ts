@@ -1,2 +1,6 @@
-// 最小 IPC 面；后续任务逐个补充通道（设计书 §9）。
-export {}
+import { contextBridge, ipcRenderer } from 'electron'
+
+contextBridge.exposeInMainWorld('dosket', {
+  retry: (): void => { ipcRenderer.send('dosket:retry') },
+  openLogs: (): void => { ipcRenderer.send('dosket:open-logs') },
+})
