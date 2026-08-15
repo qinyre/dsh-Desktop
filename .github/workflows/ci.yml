@@ -25,5 +25,7 @@ jobs:
         run: npm ci
       - name: Electron Node version check
         run: npm run check:electron
+      - name: Typecheck
+        run: npx tsc --noEmit
       - name: Unit tests
         run: npm test
