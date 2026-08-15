@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { app, ipcMain, shell } from 'electron'
+import { app, ipcMain, Menu, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
 import { SidecarLogger } from './sidecar/sidecar-logger'
@@ -29,6 +29,10 @@ const resolvePnpmCli = (): string => {
 // Windows toast 通知必需：不设 AppUserModelId 的打包应用通知会静默不显示；
 // 必须与 electron-builder.yml 的 appId 一致（Bug 3 修复）。
 app.setAppUserModelId('com.dshdesktop.app')
+
+// 去掉 Electron 默认菜单栏（File/Edit/View/Window/Help）：壳应用用不到，dsh 页自带完整 UI。
+// 附带效果：菜单角色承载的加速键（Ctrl+R/F12 等）失效，dev 的 devtools 入口在创建主窗口后补回。
+Menu.setApplicationMenu(null)
 
 // dev 默认源码仓：desktop/ 的兄弟目录 deepseek-harness（可用 DESKTOP_DSH_REPO 覆盖）
 const repoRoot = process.env.DESKTOP_DSH_REPO ?? join(app.getAppPath(), '..', 'deepseek-harness')
@@ -62,7 +66,8 @@ if (!gotLock) {
       pluginsPagePath,
       stateFile: join(paths.userDataDir, 'window-state.json'),
     })
-    windows.createMainWindow()
+    const win = windows.createMainWindow()
+    if (!app.isPackaged) win.webContents.openDevTools({ mode: 'detach' })
     // 托盘（设计书 §5）：关闭=隐藏到托盘（首次隐藏弹一次气泡），退出走托盘菜单（sidecar 一并结束）。
     // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
     const tray = new TrayController({
