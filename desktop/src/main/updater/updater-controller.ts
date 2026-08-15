@@ -7,7 +7,7 @@ export class UpdaterController {
   constructor(private readonly opts: { feedUrl?: string; dshHome: string; backupRoot: string }) {}
 
   start(): void {
-    if (this.opts.feedUrl === undefined) return // dev：无 feed，静默跳过
+    if (this.opts.feedUrl === undefined || this.opts.feedUrl === '') return // dev：无 feed，静默跳过
     autoUpdater.setFeedURL(this.opts.feedUrl)
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = false // 设计书 §8"安装前询问"：安装只能由用户点"立即安装"触发，选"稍后"后退出不得静默安装
@@ -22,6 +22,8 @@ export class UpdaterController {
         autoUpdater.quitAndInstall()
       }
     })
-    void autoUpdater.checkForUpdates()
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.warn('[dosket] update check failed:', String(error)) // 离线/DNS/feed 不可达等失败仅记日志，不产生未处理 rejection
+    })
   }
 }
