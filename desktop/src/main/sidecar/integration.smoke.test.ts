@@ -14,7 +14,7 @@ const [smokeNodeMajor, smokeNodeMinor] = process.version.slice(1).split('.').map
 const nodeOk = (smokeNodeMajor === 22 && smokeNodeMinor >= 19) || smokeNodeMajor >= 24
 
 describe.skipIf(!guard || !nodeOk)('sidecar smoke', () => {
-  const logDir = mkdtempSync(join(tmpdir(), 'dosket-smoke-'))
+  const logDir = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   afterAll(() => rmSync(logDir, { recursive: true, force: true }))
 
   it('boots source-mode dsh web, reaches readiness, serves /api', { timeout: 120_000 }, async () => {

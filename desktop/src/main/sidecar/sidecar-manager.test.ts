@@ -39,7 +39,7 @@ function fakeChild(killExit: KillExit = {}): FakeChild {
 }
 
 const runtime: ResolvedRuntime = { command: 'fake', args: ['web', '--port', '0', '--host', '127.0.0.1'], cwd: undefined }
-const logDir = mkdtempSync(join(tmpdir(), 'dosket-sm-'))
+const logDir = mkdtempSync(join(tmpdir(), 'dsh-desktop-sm-'))
 
 function makeManager(
   childRef: { current?: FakeChild },

@@ -1,6 +1,6 @@
 const out = document.getElementById('out')!
 const installed = document.getElementById('installed') as HTMLSelectElement
-const plugins = (window.dosket as unknown as { plugins: { list(): Promise<string[]>; run(args: string[]): Promise<number>; restartSidecar(): void } }).plugins
+const plugins = (window.dshDesktop as unknown as { plugins: { list(): Promise<string[]>; run(args: string[]): Promise<number>; restartSidecar(): void } }).plugins
 
 async function refresh(): Promise<void> {
   installed.innerHTML = ''
@@ -51,5 +51,5 @@ document.getElementById('remove')!.addEventListener('click', async () => {
   }
 })
 document.getElementById('restart')!.addEventListener('click', () => plugins.restartSidecar())
-window.addEventListener('dosket:plugins-output', (event) => { out.textContent += `${(event as CustomEvent<string>).detail}\n` })
+window.addEventListener('dsh:plugins-output', (event) => { out.textContent += `${(event as CustomEvent<string>).detail}\n` })
 void refresh()

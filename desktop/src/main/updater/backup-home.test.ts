@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { backupDshHome } from './backup-home'
 
-const root = mkdtempSync(join(tmpdir(), 'dosket-bk-'))
+const root = mkdtempSync(join(tmpdir(), 'dsh-desktop-bk-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
 describe('backupDshHome（设计书 §8：更新前自动备份，保留最近 1 份）', () => {

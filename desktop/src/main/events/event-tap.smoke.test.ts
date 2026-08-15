@@ -11,7 +11,7 @@ const repoRoot = join(__dirname, '..', '..', '..', '..', 'deepseek-harness')
 const [tapNodeMajor, tapNodeMinor] = process.version.slice(1).split('.').map(Number)
 const nodeOk = (tapNodeMajor === 22 && tapNodeMinor >= 19) || tapNodeMajor >= 24
 describe.skipIf(!existsSync(join(repoRoot, 'apps', 'cli', 'src', 'bin.ts')) || !nodeOk)('event tap smoke', () => {
-  const logDir = mkdtempSync(join(tmpdir(), 'dosket-tap-'))
+  const logDir = mkdtempSync(join(tmpdir(), 'dsh-desktop-tap-'))
   afterAll(() => rmSync(logDir, { recursive: true, force: true }))
 
   it('both downlink sockets upgrade and survive read-only', { timeout: 120_000 }, async () => {

@@ -10,20 +10,20 @@ import { PluginManager } from './plugin-manager'
 // 前置：系统 node ≥22.19（冒烟用系统 node 充当 execPath）。
 const [nodeMajor, nodeMinor] = process.version.slice(1).split('.').map(Number)
 const nodeOk = (nodeMajor === 22 && nodeMinor >= 19) || nodeMajor >= 24
-const root = mkdtempSync(join(tmpdir(), 'dosket-plugin-'))
+const root = mkdtempSync(join(tmpdir(), 'dsh-desktop-plugin-'))
 const dshHome = join(root, 'home')
 const fakePlugin = join(root, 'fake-plugin')
 beforeAll(() => {
   mkdirSync(fakePlugin, { recursive: true })
   writeFileSync(join(fakePlugin, 'package.json'), JSON.stringify({
-    name: 'dosket-fake-plugin', version: '1.0.0',
+    name: 'dsh-desktop-fake-plugin', version: '1.0.0',
     dsh: { bundle: { patch: './cordis.patch.yml' } },
   }))
   writeFileSync(join(fakePlugin, 'cordis.patch.yml'), 'entries: []\n')
 })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-describe.skipIf(process.env.DOSKET_PLUGIN_SMOKE !== '1' || !nodeOk || process.platform !== 'win32')('plugin smoke', () => {
+describe.skipIf(process.env.DSH_DESKTOP_PLUGIN_SMOKE !== '1' || !nodeOk || process.platform !== 'win32')('plugin smoke', () => {
   it('installs a bundle-declaring plugin under a clean PATH with no system node', { timeout: 180_000 }, async () => {
     const lines: string[] = []
     const manager = new PluginManager({
@@ -40,9 +40,9 @@ describe.skipIf(process.env.DOSKET_PLUGIN_SMOKE !== '1' || !nodeOk || process.pl
     if (code !== 0) console.log('--- plugin smoke output ---\n' + lines.join('\n'))
     expect(code).toBe(0)
     const manifest = JSON.parse(readFileSync(join(dshHome, 'profiles', 'web', 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } }
-    expect(manifest.dsh?.profile?.bundles).toContain('dosket-fake-plugin')
-    expect(manager.listInstalled()).toEqual(['dosket-fake-plugin'])
-    const remove = await manager.run(['remove', 'dosket-fake-plugin'])
+    expect(manifest.dsh?.profile?.bundles).toContain('dsh-desktop-fake-plugin')
+    expect(manager.listInstalled()).toEqual(['dsh-desktop-fake-plugin'])
+    const remove = await manager.run(['remove', 'dsh-desktop-fake-plugin'])
     if (remove !== 0) console.log('--- remove output ---\n' + lines.join('\n'))
     expect(remove).toBe(0)
     expect(manager.listInstalled()).toEqual([])

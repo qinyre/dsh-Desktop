@@ -28,7 +28,7 @@ const resolvePnpmCli = (): string => {
 
 // Windows toast 通知必需：不设 AppUserModelId 的打包应用通知会静默不显示；
 // 必须与 electron-builder.yml 的 appId 一致（Bug 3 修复）。
-app.setAppUserModelId('com.dosket.desktop')
+app.setAppUserModelId('com.dshdesktop.app')
 
 // dev 默认源码仓：desktop/ 的兄弟目录 deepseek-harness（可用 DESKTOP_DSH_REPO 覆盖）
 const repoRoot = process.env.DESKTOP_DSH_REPO ?? join(app.getAppPath(), '..', 'deepseek-harness')
@@ -73,8 +73,8 @@ if (!gotLock) {
       onQuit: () => { app.quit() },
     })
     if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
-    ipcMain.on('dosket:retry', () => sidecar?.retry())
-    ipcMain.on('dosket:open-logs', () => { void shell.openPath(paths.logDir) })
+    ipcMain.on('dsh:retry', () => sidecar?.retry())
+    ipcMain.on('dsh:open-logs', () => { void shell.openPath(paths.logDir) })
     sidecar = new SidecarManager({
       runtime: () => resolveRuntime({ mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot, dshArgs: ['web', '--port', '0', '--host', '127.0.0.1'] }),
       env: buildSidecarEnv(paths, process.env),
@@ -91,26 +91,26 @@ if (!gotLock) {
       dshHome: paths.dshHome, sidecarEnv: buildSidecarEnv(paths, process.env),
       shimDir: join(paths.userDataDir, 'bin'),
       resolvePnpmCli,
-      onOutput: (line) => { windows?.pluginDialog?.webContents.send('dosket:plugins-output', line) },
+      onOutput: (line) => { windows?.pluginDialog?.webContents.send('dsh:plugins-output', line) },
       restartSidecar: () => { void sidecar?.restart() }, // ready 态的重启生效必须走 restart()，retry() 是 no-op（Bug 1 修复）
     })
     // 插件通道门禁（终审 Important #4；设计书 §7"安装=对话框明示同意"、§9）：主窗口与
     // 插件对话框共用一份 preload，dsh 页（含第三方 /plugins/<id>/client.js）同样拿得到
-    // window.dosket.plugins——三个插件通道只接受插件页自身的 sender；dosket:retry /
-    // dosket:open-logs 是状态页/托盘级关注点，保持开放。handle 通道抛错 → 渲染端 invoke
+    // window.dshDesktop.plugins——三个插件通道只接受插件页自身的 sender；dsh:retry /
+    // dsh:open-logs 是状态页/托盘级关注点，保持开放。handle 通道抛错 → 渲染端 invoke
     // 拒绝；on 通道静默忽略。
     const assertPluginsPageSender = (url: string): void => {
       if (!isPluginsPageSender(url)) throw new Error(`plugin channel denied for sender: ${url}`)
     }
-    ipcMain.handle('dosket:plugins:list', (event) => {
+    ipcMain.handle('dsh:plugins:list', (event) => {
       assertPluginsPageSender(event.senderFrame?.url ?? '')
       return pluginManager.listInstalled()
     })
-    ipcMain.handle('dosket:plugins:run', (event, args: unknown) => {
+    ipcMain.handle('dsh:plugins:run', (event, args: unknown) => {
       assertPluginsPageSender(event.senderFrame?.url ?? '')
       return pluginManager.run(Array.isArray(args) ? args.map(String) : [])
     })
-    ipcMain.on('dosket:restart-sidecar', (event) => {
+    ipcMain.on('dsh:restart-sidecar', (event) => {
       if (!isPluginsPageSender(event.senderFrame?.url ?? '')) return
       void sidecar?.restart()
     })
@@ -125,7 +125,7 @@ if (!gotLock) {
     // 自动更新（设计书 §8）：仅打包启用；无 feedUrl（dev/未配置）时 start() 静默跳过。
     if (app.isPackaged) {
       new UpdaterController({
-        feedUrl: process.env.DOSKET_FEED_URL, // GitHub Releases 泛化地址；发布时写入实际 repo
+        feedUrl: process.env.DSH_DESKTOP_FEED_URL, // GitHub Releases 泛化地址；发布时写入实际 repo
         dshHome: paths.dshHome ?? '',
         backupRoot: join(paths.userDataDir, 'backups'),
       }).start()

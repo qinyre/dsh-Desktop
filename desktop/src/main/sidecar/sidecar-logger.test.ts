@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { SidecarLogger } from './sidecar-logger'
 
-const dir = mkdtempSync(join(tmpdir(), 'dosket-log-'))
+const dir = mkdtempSync(join(tmpdir(), 'dsh-desktop-log-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('SidecarLogger', () => {

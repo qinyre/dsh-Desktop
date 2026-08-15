@@ -84,7 +84,7 @@ export class EventTap {
     }
     const win = this.opts.getMainWindow()
     if (!shouldNotify(win?.isVisible() ?? false, win?.isFocused() ?? false)) return
-    const notification = new Notification({ title, body: '点击返回 Dosket' })
+    const notification = new Notification({ title, body: '点击返回 DSH Desktop' })
     notification.on('click', () => this.opts.getMainWindow()?.focus())
     notification.show()
   }

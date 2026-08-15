@@ -11,7 +11,7 @@ export class TrayController {
 
   attach(win: BrowserWindow): void {
     this.tray = new Tray(this.opts.iconPath)
-    this.tray.setToolTip('Dosket')
+    this.tray.setToolTip('DSH Desktop')
     this.tray.setContextMenu(Menu.buildFromTemplate([
       { label: '显示主窗口', click: () => this.opts.onShow() },
       { label: '打开日志目录', click: () => { void shell.openPath(this.opts.logDir) } },
@@ -24,7 +24,7 @@ export class TrayController {
       if (closeAction({ quiting: this.quiting }) === 'hide') {
         event.preventDefault()
         win.hide()
-        if (!this.trayShownOnce()) { this.tray?.displayBalloon({ title: 'Dosket', content: '已最小化到托盘' }) }
+        if (!this.trayShownOnce()) { this.tray?.displayBalloon({ title: 'DSH Desktop', content: '已最小化到托盘' }) }
         this.trayHintShown = true
       }
     })

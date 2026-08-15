@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { WindowStateStore } from './window-state-store'
 
-const dir = mkdtempSync(join(tmpdir(), 'dosket-ws-'))
+const dir = mkdtempSync(join(tmpdir(), 'dsh-desktop-ws-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('WindowStateStore', () => {
