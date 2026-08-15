@@ -1,0 +1,18 @@
+# 上游源码检出：只读引用，不纳入本仓库
+/deepseek-harness/
+
+# 本地工作流文档（superpowers specs 等），不随社区发布
+/docs/superpowers/
+
+# Node
+node_modules/
+dist/
+out/
+*.log
+
+# Electron builder
+/release/
+
+# 环境变量
+.env
+.env.local
