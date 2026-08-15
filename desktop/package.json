@@ -9,8 +9,8 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "check:electron": "electron scripts/check-node.mjs",
-    "smoke:sidecar": "vitest run -t 'sidecar smoke'",
-    "smoke:plugin": "vitest run -t 'plugin smoke'",
+    "smoke:sidecar": "vitest run -t \"sidecar smoke\"",
+    "smoke:plugin": "vitest run -t \"plugin smoke\"",
     "dist": "electron-vite build && electron-builder --win nsis"
   },
   "dependencies": {

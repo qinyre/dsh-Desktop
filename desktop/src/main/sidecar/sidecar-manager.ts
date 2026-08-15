@@ -74,13 +74,13 @@ export class SidecarManager {
     // 会产出"状态被落定的 stop 覆盖成 idle、却留着活 child"的孤儿
     // （无超时保护、ready 行被拒、下一次 start 再孤儿化它）。
     // 同步入口拿不到 Promise：链自身吞错续跑，这里再兜一层 catch 避免 unhandled rejection。
-    this.runSerialized(() => this.doStart()).catch(() => {})
+    this.runSerialized(() => this.doStart()).catch((error) => this.opts.logger.appendLine(String(error)))
   }
 
   retry(): void {
     // failed-only 守卫放在串行 op 内：与在飞行 stop() 竞争时，守卫看到的是
     // stop 落定后的终态（idle），不会在其 kill 窗口里抢先 spawn 出 stop 管不到的 child。
-    this.runSerialized(() => this.doRetry()).catch(() => {})
+    this.runSerialized(() => this.doRetry()).catch((error) => this.opts.logger.appendLine(String(error)))
   }
 
   /**
