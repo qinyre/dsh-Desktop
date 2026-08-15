@@ -6,6 +6,7 @@ import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime } from './sidecar/runtime-resolver'
 import { TrayController } from './tray/tray-controller'
+import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
 
 // Windows toast 通知必需：不设 AppUserModelId 的打包应用通知会静默不显示；
@@ -67,6 +68,15 @@ if (!gotLock) {
     const eventTap = new EventTap({ getMainWindow: () => windows?.mainWindow })
     eventTap.attach(sidecar)
     app.on('before-quit', () => eventTap.close())
+
+    // 自动更新（设计书 §8）：仅打包启用；无 feedUrl（dev/未配置）时 start() 静默跳过。
+    if (app.isPackaged) {
+      new UpdaterController({
+        feedUrl: process.env.DOSKET_FEED_URL, // GitHub Releases 泛化地址；发布时写入实际 repo
+        dshHome: paths.dshHome ?? '',
+        backupRoot: join(paths.userDataDir, 'backups'),
+      }).start()
+    }
 
     sidecar.start()
   })
