@@ -1,0 +1,25 @@
+appId: com.dosket.desktop
+productName: Dosket
+directories:
+  output: release
+files:
+  - out/**
+  - resources/**
+  - package.json
+# ELECTRON_RUN_AS_NODE 的子进程读不了 asar：dsh 及其依赖、pnpm 必须解包到真实磁盘（设计书 §10）。
+asarUnpack:
+  - node_modules/**
+# 跳过 @electron/rebuild：本机无 VS 工具链，且唯一的原生依赖 node-pty 1.1.0 自带
+# prebuilds/win32-x64（已验证可在 Electron-as-Node ABI 148 下加载并 spawn），
+# 无需针对 Electron 头文件重编。
+npmRebuild: false
+win:
+  target: NSIS
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+# 本仓库尚无远端/发布仓：不显式置 null 时 electron-builder 会在生成 latest.yml 的
+# update-info 阶段因解析不到 publish provider 而抛 NPE（updateInfoBuilder）。
+# 发布流水线接入真实 feed 时，替换为 { provider: github, ... } 或 generic provider，
+# 届时 latest.yml 才会随安装器一并产出（运行期 feed 由 DOSKET_FEED_URL 覆盖）。
+publish: null

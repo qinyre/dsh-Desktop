@@ -13,8 +13,9 @@ dist/
 out/
 *.log
 
-# Electron builder
+# Electron builder（/release/ 锚定仓库根，盖不住 desktop/ 下的产物目录）
 /release/
+/desktop/release/
 
 # 环境变量
 .env

@@ -12,6 +12,10 @@ export interface ResolvedRuntime {
  * Assemble the sidecar/plugin child command (设计书 §3/§10)。
  * source：tsx ESM hook 加载仓库 CLI（AGENTS.md 的 source-launch 契约），cwd=仓库根。
  * npm：捆绑包 lib/bin.js；ELECTRON_RUN_AS_NODE 的纯 Node 读不了 asar，路径必须映射到 app.asar.unpacked。
+ * 两种模式都前置 --expose-internals：dsh web profile 的 cordis-plugin-hmr 需要 Node 内部
+ * 模块。dev 冒烟（纯 Node）走 node-addon-require-builtin 探测兜底也能活；但 GUI 下子进程
+ * 是 Electron-as-Node，该 addon 的 realm 探测在 Electron embedder data 下失败（实测
+ * "Unsupported/no-realm"），唯有显式 flag 才能让 loader.internal 命中 require 路径。
  */
 export function resolveRuntime(opts: {
   mode: RuntimeMode
@@ -26,7 +30,7 @@ export function resolveRuntime(opts: {
     const entry = join(opts.repoRoot, 'apps/cli/src/bin.ts').split(sep).join('/')
     return {
       command: opts.execPath,
-      args: ['--import', 'tsx/esm', entry, ...opts.dshArgs],
+      args: ['--expose-internals', '--import', 'tsx/esm', entry, ...opts.dshArgs],
       cwd: opts.repoRoot,
     }
   }
@@ -35,5 +39,5 @@ export function resolveRuntime(opts: {
   const entry = resolve('@deepseek-ai/dsh/lib/bin.js')
   const unpacked = (p: string): string => p.replace('app.asar', 'app.asar.unpacked')
   void pkgPath // 存在性校验：解析失败会抛错，即"未捆绑 dsh"在设计书上要求 fail loud
-  return { command: opts.execPath, args: [unpacked(entry), ...opts.dshArgs], cwd: undefined }
+  return { command: opts.execPath, args: ['--expose-internals', unpacked(entry), ...opts.dshArgs], cwd: undefined }
 }
