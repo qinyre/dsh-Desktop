@@ -1,0 +1,9 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "compilerOptions": {
+    "strict": true,
+    "types": ["node"],
+    "paths": { "@main/*": ["src/main/*"] }
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.d.ts"]
+}
