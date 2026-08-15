@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAllowedNavigation } from './navigation-guard'
+import { isAllowedNavigation, isSafeExternalUrl } from './navigation-guard'
 
 describe('isAllowedNavigation（设计书 §9）', () => {
   it('allows only the live sidecar origin', () => {
@@ -13,5 +13,18 @@ describe('isAllowedNavigation（设计书 §9）', () => {
   })
   it('blocks everything while no port is known', () => {
     expect(isAllowedNavigation('http://127.0.0.1:45678/', undefined)).toBe(false)
+  })
+})
+
+describe('isSafeExternalUrl（设计书 §9）', () => {
+  it('allows only http(s) URLs handed to the system browser', () => {
+    expect(isSafeExternalUrl('https://example.com/')).toBe(true)
+    expect(isSafeExternalUrl('http://127.0.0.1:1/x')).toBe(true)
+  })
+  it('blocks OS scheme handlers, file, javascript, and non-URLs', () => {
+    expect(isSafeExternalUrl('ms-msdt:foo')).toBe(false)
+    expect(isSafeExternalUrl('file:///etc/passwd')).toBe(false)
+    expect(isSafeExternalUrl('javascript:alert(1)')).toBe(false)
+    expect(isSafeExternalUrl('not a url')).toBe(false)
   })
 })

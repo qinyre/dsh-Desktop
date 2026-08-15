@@ -1,6 +1,6 @@
 import { BrowserWindow, shell } from 'electron'
 import type { SidecarState } from '../sidecar/sidecar-manager'
-import { isAllowedNavigation } from './navigation-guard'
+import { isAllowedNavigation, isSafeExternalUrl } from './navigation-guard'
 import { WindowStateStore } from './window-state-store'
 
 /** 主窗口（设计书 §3/§4/§9）：状态页 ↔ dsh 页切换、导航锁、外链转系统浏览器。 */
@@ -34,7 +34,8 @@ export class WindowController {
       if (!isAllowedNavigation(url, this.port)) event.preventDefault()
     })
     this.win.webContents.setWindowOpenHandler(({ url }) => {
-      void shell.openExternal(url)
+      // 外链仅 http(s) 可交给系统浏览器（设计书 §9）：防止 ms-msdt: 等任意 scheme 触发 OS 处理器。
+      if (isSafeExternalUrl(url)) void shell.openExternal(url)
       return { action: 'deny' }
     })
     this.showStatus('launching')
