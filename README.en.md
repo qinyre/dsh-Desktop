@@ -89,11 +89,16 @@ npm run dev            # launch the app (dev uses the source checkout)
 npm test               # unit tests
 npm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
 DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:plugin   # clean-PATH plugin install (Windows)
+npm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
 npm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
 npm run dist           # build the NSIS installer
 ```
 
 Dev mode resolves the upstream checkout at `../deepseek-harness` (override with `DESKTOP_DSH_REPO`); `DESKTOP_DSH_MODE=npm` switches to the bundled registry package. Smokes self-skip when their prerequisites are absent.
+
+### Known patch
+
+`patches/` carries one patch-package patch: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which fatal-errors under Electron's embedded Node (`FATAL ERROR: Error::New napi_get_last_error_info` — plain Node is unaffected), so packaged builds died right after a folder was picked ("win32 folder dialog worker exited before reporting a result"). The patch switches the read to per-unit `koffi.decode()`; it is applied automatically by the postinstall hook after `npm ci`, and `npm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child. If a dsh upgrade breaks the patch, patch-package fails loudly at install time instead of silently regressing.
 
 ### Project layout
 

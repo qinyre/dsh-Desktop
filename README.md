@@ -89,11 +89,16 @@ npm run dev            # 启动应用（dev 模式使用源码仓）
 npm test               # 单元测试
 npm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
 DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:plugin   # 干净 PATH 插件安装冒烟（Windows）
+npm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
 npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
 npm run dist           # 构建 NSIS 安装器
 ```
 
 dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_REPO` 覆盖）；`DESKTOP_DSH_MODE=npm` 切换到捆绑的 npm 包。冒烟在前置条件缺失时自动跳过。
+
+### 已知补丁
+
+`patches/` 里有一个 patch-package 补丁：dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会以 `FATAL ERROR: Error::New napi_get_last_error_info` 当场崩溃（普通 Node 无此问题），打包版因此选完文件夹就报 "win32 folder dialog worker exited before reporting a result"。补丁把读取改成逐单元 `koffi.decode()`，`npm ci` 后由 postinstall 自动应用，`npm run smoke:picker` 在真实 `ELECTRON_RUN_AS_NODE` 子进程里验证。升级 dsh 导致补丁失配时，patch-package 会在安装阶段直接报错，不会静默失效。
 
 ### 目录结构
 

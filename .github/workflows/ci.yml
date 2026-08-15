@@ -25,6 +25,8 @@ jobs:
         run: npm ci
       - name: Electron Node version check
         run: npm run check:electron
+      - name: Picker patch smoke
+        run: npm run smoke:picker
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Unit tests
