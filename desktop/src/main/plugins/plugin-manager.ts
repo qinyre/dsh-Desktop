@@ -29,7 +29,12 @@ export class PluginManager {
     for (const stream of [child.stdout, child.stderr]) {
       if (stream !== null) createInterface({ input: stream }).on('line', (line) => this.opts.onOutput(line))
     }
-    return await new Promise<number>((resolve) => { child.once('exit', (code) => resolve(code ?? 1)) })
+    return await new Promise<number>((resolve) => {
+      // close（而非 exit）：等 stdio 排空，避免退出码行抢在最后几行输出之前。
+      child.once('close', (code) => resolve(code ?? 1))
+      // spawn 失败（cwd 无效、入口缺失等）只发 error 不发 exit：必须兜底 resolve，否则永久挂起。
+      child.once('error', (error) => { this.opts.onOutput(String(error)); resolve(1) })
+    })
   }
 
   listInstalled(): string[] {

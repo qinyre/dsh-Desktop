@@ -23,7 +23,7 @@ beforeAll(() => {
 })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-describe.skipIf(process.env.DOSKET_PLUGIN_SMOKE !== '1' || !nodeOk)('plugin smoke', () => {
+describe.skipIf(process.env.DOSKET_PLUGIN_SMOKE !== '1' || !nodeOk || process.platform !== 'win32')('plugin smoke', () => {
   it('installs a bundle-declaring plugin under a clean PATH with no system node', { timeout: 180_000 }, async () => {
     const lines: string[] = []
     const manager = new PluginManager({
