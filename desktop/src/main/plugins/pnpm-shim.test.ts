@@ -26,8 +26,11 @@ describe('ensurePnpmShim（设计书 §7：运行时生成，ELECTRON_RUN_AS_NOD
 })
 
 describe('prependPath', () => {
-  it('prepends with the platform delimiter', () => {
-    expect(prependPath('C:\\a;C:\\b', 'C:\\shim')).toBe('C:\\shim;C:\\a;C:\\b')
-    expect(prependPath('/a:/b', '/shim')).toBe('/shim:/a:/b')
+  it('prepends with the platform separator', () => {
+    expect(prependPath('C:\\a;C:\\b', 'C:\\shim', 'win32')).toBe('C:\\shim;C:\\a;C:\\b')
+    expect(prependPath('/a:/b', '/shim', 'linux')).toBe('/shim:/a:/b')
+  })
+  it('does not misread a drive-letter colon as the POSIX separator (single-entry Windows PATH)', () => {
+    expect(prependPath('C:\\Windows\\System32', 'C:\\shim', 'win32')).toBe('C:\\shim;C:\\Windows\\System32')
   })
 })

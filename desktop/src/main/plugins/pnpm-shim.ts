@@ -1,5 +1,4 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
-import { delimiter } from 'node:path'
 
 /**
  * 免 Node 环境的 pnpm 执行（设计书 §7）：shim 把调用改写为
@@ -25,9 +24,10 @@ export async function ensurePnpmShim(opts: {
   return opts.shimDir
 }
 
-export function prependPath(path: string, dir: string): string {
-  // Sniff the delimiter from the existing value so PATH strings of either platform
-  // are prepended deterministically; fall back to the host `path.delimiter`.
-  const delim = path.includes(';') ? ';' : path.includes(':') ? ':' : delimiter
+export function prependPath(path: string, dir: string, platform: NodeJS.Platform = process.platform): string {
+  // The separator comes from the platform, not from sniffing the value: a
+  // single-entry Windows PATH ("C:\Windows\System32") carries a drive-letter
+  // colon that is indistinguishable from the POSIX separator by string shape.
+  const delim = platform === 'win32' ? ';' : ':'
   return `${dir}${delim}${path}`
 }
