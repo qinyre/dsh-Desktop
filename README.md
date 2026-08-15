@@ -6,7 +6,7 @@
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的免配置桌面客户端**
 
-安装、双击、开聊。不需要 Node.js，不需要 pnpm，不需要终端。
+安装后双击即用，不需要 Node.js、pnpm 或终端。
 
 <!-- TODO: 替换为主窗口真实截图 -->
 ![DSH Desktop 主窗口](docs/images/screenshot-main.png)
@@ -27,12 +27,12 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 
 ## 特性
 
-- **真正的免配置** —— 安装包自带全部运行时。一台只有 Windows 的机器，点一次安装就能跑完整 dsh Web UI。
-- **原版 Web UI，零改动** —— `dsh web` 的全部功能（工作区、会话、审批、模型、技能、计划模式、终端）都在应用窗口里。DSH Desktop 是壳，不是重造轮子。
-- **崩溃自愈** —— sidecar 由带指数退避的监督器看护；dsh 的 append-only 会话日志保证进程被杀也丢不了对话。
-- **原生通知** —— 窗口隐藏或失焦时，等待审批与回合完成会以 Windows 通知弹出。关闭到托盘，长任务不挡桌面。
-- **内置插件管理器** —— 从托盘菜单安装第三方 dsh 插件。应用自带 pnpm shim，装插件不需要机器上有 Node/pnpm。
-- **自动更新 + 数据备份** —— 更新先询问再安装，安装前自动备份你的会话、凭据和设置。
+- 安装包自带完整运行时（Node、pnpm shim、dsh），机器上什么都不用预装。
+- Web UI 原封不动：`dsh web` 的工作区、会话、审批、模型、技能、终端都在应用窗口里，DSH Desktop 只是外面那层壳。
+- sidecar 有监督重启（指数退避），进程崩了会自动拉起；dsh 的 append-only 会话日志也保证对话不丢。
+- 窗口隐藏或失焦时，等待中的审批和回合结束会弹 Windows 原生通知；关闭到托盘，长任务不占桌面。
+- 托盘菜单里有插件管理器，装第三方 dsh 插件不需要机器上有 Node/pnpm。
+- 自动更新先询问再装，安装前会备份会话、凭据和设置。
 
 ## 安装
 
@@ -40,7 +40,7 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 
 <!-- TODO: 首个 Release 发布后补下载徽章/直达链接 -->
 
-环境要求：Windows 10/11（x64）。没了。
+环境要求：Windows 10/11 x64。
 
 ### 首次运行
 
@@ -68,21 +68,9 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 
 ## 工作原理
 
-```text
-┌─ DSH Desktop (Electron) ─────────────────┐
-│  进程监督 · 窗口 · 托盘 · 通知              │
-└────────────┬──────────────────────────────┘
-             │ spawn (ELECTRON_RUN_AS_NODE)
-             ▼
-   dsh web --port 0 --host 127.0.0.1
-             │ stdout 就绪行
-             ▼
-   窗口加载 http://127.0.0.1:<随机端口>
-```
+DSH Desktop 是一个 Electron 壳。启动时它通过 `ELECTRON_RUN_AS_NODE` 把 Electron 二进制当作 Node 运行时，拉起子进程 `dsh web --port 0 --host 127.0.0.1`，从 stdout 的就绪行解析出实际端口，再让窗口加载 `http://127.0.0.1:<端口>`。整个应用只有一个运行时，不存在 Node 版本分裂；服务也只绑定随机回环端口，不会暴露到网络。
 
-- sidecar 复用 Electron 二进制作为 Node 运行时——单一运行时，无版本分裂。
-- 服务只绑定**随机回环端口**，永不暴露到网络。
-- **威胁模型，明说：** 本地 HTTP API 没有鉴权（上游设计如此——那道栅栏防 DNS rebinding，不是鉴权层）。任何以你的用户身份运行的进程都能访问它——但这样的进程同样能直接读 dsh 落盘的凭据，边际风险限定在"本机已沦陷"的前提下。栅栏的准确范围见上游 [connection 文档](https://github.com/deepseek-ai/deepseek-harness)。
+安全方面有一点要说明：本地 HTTP API 没有鉴权（上游如此设计，Origin 栅栏防的是 DNS rebinding，不是本地进程）。任何以你的用户身份运行的进程都能访问它，但这类进程同样能直接读 dsh 落盘的凭据，所以边际风险限于"本机已被攻陷"这个前提。栅栏的准确范围见上游 [connection 文档](https://github.com/deepseek-ai/deepseek-harness)。
 
 ## 开发
 

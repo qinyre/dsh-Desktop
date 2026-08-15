@@ -6,7 +6,7 @@
 
 **Zero-config desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh)**
 
-Install it, double-click it, chat. No Node.js, no pnpm, no terminal.
+Install it, double-click it. No Node.js, pnpm, or terminal needed.
 
 <!-- TODO: replace with a real screenshot of the main window -->
 ![DSH Desktop main window](docs/images/screenshot-main.png)
@@ -27,12 +27,12 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 
 ## Highlights
 
-- **True zero-config** — the installer bundles everything. A machine with nothing but Windows runs the full dsh Web UI after one setup click.
-- **The real Web UI, unmodified** — every feature of `dsh web` (workspaces, sessions, approvals, models, skills, plan mode, terminals) runs inside the app window. DSH Desktop is a shell, not a reimplementation.
-- **Crash-resilient** — the sidecar is supervised with exponential-backoff restarts; dsh's append-only session log means a killed process never loses your conversation.
-- **Native notifications** — approvals waiting and turns finishing surface as Windows toasts when the window is hidden or unfocused. Close-to-tray keeps long agent runs out of your way.
-- **Built-in plugin manager** — install third-party dsh plugins from the tray menu. The app ships its own pnpm shim, so installing plugins needs no Node/pnpm on PATH.
-- **Auto-update with data backup** — updates ask before installing and back up your sessions, credentials, and settings first.
+- The installer bundles the whole runtime — Node, a pnpm shim, and dsh. Nothing to preinstall.
+- The Web UI runs unmodified: workspaces, sessions, approvals, models, skills, and terminals all work inside the app window, because DSH Desktop is just the shell around `dsh web`.
+- The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
+- Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and close-to-tray keeps long runs out of the way.
+- The tray menu includes a plugin manager; installing third-party dsh plugins needs no Node/pnpm on the machine.
+- Updates ask before installing and back up your sessions, credentials, and settings first.
 
 ## Install
 
@@ -40,7 +40,7 @@ Grab the latest `DSH Desktop Setup x.x.x.exe` from [**Releases**](https://github
 
 <!-- TODO: add a Releases download badge/link once the first release is published -->
 
-Requirements: Windows 10/11 (x64). That's the list.
+Requirements: Windows 10/11 x64.
 
 ### First run
 
@@ -68,21 +68,9 @@ then click **重启生效** (restart to apply). Removing a plugin works the same
 
 ## How it works
 
-```text
-┌─ DSH Desktop (Electron) ─────────────────┐
-│  supervisor · window · tray · notifier    │
-└────────────┬──────────────────────────────┘
-             │ spawn (ELECTRON_RUN_AS_NODE)
-             ▼
-   dsh web --port 0 --host 127.0.0.1
-             │ stdout readiness line
-             ▼
-   window loads http://127.0.0.1:<random port>
-```
+DSH Desktop is an Electron shell. On launch it reuses the Electron binary as a Node runtime (`ELECTRON_RUN_AS_NODE`) to spawn `dsh web --port 0 --host 127.0.0.1` as a child process, reads the actual port from the readiness line on stdout, and points the window at `http://127.0.0.1:<port>`. The app carries a single runtime (no Node version drift), and the server binds a random loopback port only, never exposed to the network.
 
-- The sidecar reuses the Electron binary as its Node runtime — one runtime, no version drift.
-- The server binds a **random loopback port only**; it is never exposed to the network.
-- **Threat model, stated plainly:** the local HTTP API has no authentication (an upstream design point — it is a DNS-rebinding fence, not an auth layer). Any process running as your user could talk to it — but such a process could equally read dsh's on-disk credentials directly, so the marginal exposure is limited to "the machine is already compromised." See the upstream [connection docs](https://github.com/deepseek-ai/deepseek-harness) for the fence's exact scope.
+One security note: the local HTTP API has no authentication. That is upstream's design — the Origin fence guards against DNS rebinding, not local processes. Any process running as your user can talk to it, but such a process could just as well read dsh's on-disk credentials directly, so the marginal exposure is limited to "this machine is already compromised." See the upstream [connection docs](https://github.com/deepseek-ai/deepseek-harness) for the fence's exact scope.
 
 ## Development
 
