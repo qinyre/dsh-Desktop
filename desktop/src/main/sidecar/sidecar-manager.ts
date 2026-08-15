@@ -70,15 +70,17 @@ export class SidecarManager {
   }
 
   start(): void {
-    this.stopping = false
-    this.restarts = 0 // 上一轮 failed 耗尽的预算不得带进新一轮
-    this.spawnSidecar()
+    // start 也走串行链：在飞行 stop()/restart() 的 kill→exit 窗口里直接 spawn，
+    // 会产出"状态被落定的 stop 覆盖成 idle、却留着活 child"的孤儿
+    // （无超时保护、ready 行被拒、下一次 start 再孤儿化它）。
+    // 同步入口拿不到 Promise：链自身吞错续跑，这里再兜一层 catch 避免 unhandled rejection。
+    this.runSerialized(() => this.doStart()).catch(() => {})
   }
 
   retry(): void {
-    if (this._state !== 'failed') return
-    this.restarts = 0
-    this.start()
+    // failed-only 守卫放在串行 op 内：与在飞行 stop() 竞争时，守卫看到的是
+    // stop 落定后的终态（idle），不会在其 kill 窗口里抢先 spawn 出 stop 管不到的 child。
+    this.runSerialized(() => this.doRetry()).catch(() => {})
   }
 
   /**
@@ -107,24 +109,37 @@ export class SidecarManager {
 
   private async doRestart(): Promise<void> {
     try {
-      if (this._state === 'failed') {
-        this.restarts = 0
-        this.stopping = false
-        this.spawnSidecar()
-        return
-      }
-      this.epoch += 1 // 旧一轮的超时落死/退避/ready 全部失效
-      this.stopping = true // 旧 child 的 exit 不触发 crashed/退避
-      this.clearTimer()
-      await this.terminateCurrent()
-      this._port = undefined
-      this.stopping = false
-      this.restarts = 0
-      this.spawnSidecar()
+      // stop() 之后 / failed 之下的 restart 与 start/retry 殊途同归：
+      // 统一走 doStart（有 child 或在途 kill 时先终止等完，再按全新一轮拉起）。
+      await this.doStart()
     } finally {
       // 同步清掉（在 promise settle 之前）：await 完成后紧接的 restart 是新一轮，不得被合并掉。
       this.inflightRestart = undefined
     }
+  }
+
+  /** retry 的串行 op：守卫在链内（状态已落定）判定，failed-only。 */
+  private async doRetry(): Promise<void> {
+    if (this._state !== 'failed') return
+    await this.doStart()
+  }
+
+  /**
+   * 全新一轮的统一实现（start/retry/restart 三入口）。
+   * 有 child 或在途 kill：先终止并等 exit，旧一轮的超时落死/退避/ready 随 epoch+1 全部失效；
+   * 否则直接拉起。两种路径都清零预算、复位 stopping（覆盖 stop() 留下的终局标记）。
+   */
+  private async doStart(): Promise<void> {
+    if (this.child !== undefined || this.terminating !== undefined) {
+      this.epoch += 1 // 旧一轮的超时落死/退避/ready 全部失效
+      this.stopping = true // 旧 child 的 exit 不触发 crashed/退避
+      this.clearTimer()
+      await this.terminateCurrent()
+    }
+    this._port = undefined
+    this.stopping = false
+    this.restarts = 0 // 上一轮 failed 耗尽的预算不得带进新一轮
+    this.spawnSidecar()
   }
 
   private async doStop(): Promise<void> {

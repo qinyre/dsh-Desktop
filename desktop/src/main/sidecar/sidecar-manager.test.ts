@@ -67,6 +67,7 @@ describe('SidecarManager', () => {
     const got: number[] = []
     const mgr = makeManager(ref, { ready: (p) => got.push(p) })
     mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined()) // start 已串行化：spawn 在链的微任务里发生
     ref.current!.stdout.write('dsh web: http://127.0.0.1:45678\n')
     await vi.waitFor(() => expect(mgr.state).toBe('ready'))
     expect(mgr.port).toBe(45678)
@@ -194,6 +195,7 @@ describe('SidecarManager', () => {
     const mgr = makeManager(ref, {}, { killExit: { manual: true } })
     mgr.on('statechange', (s) => states.push(s))
     mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
     const dying = ref.current!
     // 超时判死已发出 kill、exit 尚未放行：此时 restart 不得被迟到的落死覆盖成 failed
     await vi.waitFor(() => expect(dying.killed).toBe(true))
@@ -217,6 +219,7 @@ describe('SidecarManager', () => {
     const mgr = makeManager(ref, {}, { killExit: { manual: true } })
     mgr.on('statechange', (s) => states.push(s))
     mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
     const dying = ref.current!
     await vi.waitFor(() => expect(dying.killed).toBe(true)) // 落死窗口内进入 stop
     const stopP = mgr.stop()
@@ -229,11 +232,101 @@ describe('SidecarManager', () => {
     expect(states).not.toContain('failed')
   })
 
+  it('start() during the stop() kill window queues as a fresh start instead of orphaning', async () => {
+    const ref: { current?: FakeChild } = {}
+    let spawns = 0
+    const mgr = makeManager(ref, {}, { killExit: { manual: true }, onSpawn: () => { spawns += 1 } })
+    mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
+    const dying = ref.current!
+    dying.stdout.write('dsh web: http://127.0.0.1:11111\n')
+    await vi.waitFor(() => expect(mgr.state).toBe('ready'))
+    // stop 悬在 kill→exit 窗口（exit 未放行）时并发 start：不得立刻 spawn 出一个
+    // 落定的 stop 管不到的孤儿（idle 状态 + 活 child + ready 行被拒 + 无超时保护）。
+    const stopP = mgr.stop()
+    mgr.start()
+    dying.releaseKillExit()
+    await stopP
+    // FIFO 串行：stop 落定（idle）后 start 作为全新一轮执行——新 child 受完整保护。
+    // 修复前：start 在窗口内直接 spawn，随后 doStop 恢复把状态压成 idle → 下方 waitFor(ready) 必挂。
+    await vi.waitFor(() => expect(ref.current!).not.toBe(dying))
+    expect(spawns).toBe(2)
+    ref.current!.stdout.write('dsh web: http://127.0.0.1:55555\n')
+    await vi.waitFor(() => expect(mgr.state).toBe('ready'))
+    expect(mgr.port).toBe(55555)
+    const stopP2 = mgr.stop() // manual killExit 对新 child 同样生效：需手动放行 exit
+    ref.current!.releaseKillExit()
+    await stopP2
+    expect(mgr.state).toBe('idle')
+  })
+
+  it('retry() racing an in-flight stop() spawns no child the stop has to answer for', async () => {
+    const ref: { current?: FakeChild } = {}
+    let spawns = 0
+    const mgr = makeManager(ref, {}, { onSpawn: () => { spawns += 1 } })
+    mgr.start()
+    // 连崩耗尽预算到 failed（无在途 kill，场景对修复前后完全一致）
+    for (let round = 0; round < 4; round++) {
+      await vi.waitFor(() => expect(mgr.state).toBe('spawning'))
+      ref.current!.emit('exit', 1)
+    }
+    await vi.waitFor(() => expect(mgr.state).toBe('failed'))
+    // stop 在飞行（尚未落定 idle）时同步紧跟 retry：failed-only 守卫必须在串行 op 内
+    // 看落定后的状态，不得抢先 spawn。修复前：retry 立刻拉起第 5 个 child，
+    // stop 反过来还得杀这个"stop 之后才出生"的 child（其 exit 被 stopping 压掉、意图被静默回滚）。
+    const stopP = mgr.stop()
+    mgr.retry()
+    await stopP
+    expect(mgr.state).toBe('idle')
+    expect(spawns).toBe(4) // 修复前为 5
+    await new Promise((resolve) => setTimeout(resolve, 50)) // 静默期：不得有迟到翻转
+    expect(mgr.state).toBe('idle')
+  })
+
+  it('retry() from failed starts a fresh round that can become ready', async () => {
+    const ref: { current?: FakeChild } = {}
+    const mgr = makeManager(ref, {})
+    mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
+    const dead = ref.current!
+    await vi.waitFor(() => expect(mgr.state).toBe('failed')) // 500ms 超时判死
+    mgr.retry()
+    await vi.waitFor(() => expect(ref.current!).not.toBe(dead)) // failed-only：新一轮拉起
+    ref.current!.stdout.write('dsh web: http://127.0.0.1:33333\n')
+    await vi.waitFor(() => expect(mgr.state).toBe('ready'))
+    expect(mgr.port).toBe(33333)
+    await mgr.stop()
+  })
+
+  it('restart() after a completed stop() behaves as a fresh start', async () => {
+    const ref: { current?: FakeChild } = {}
+    const states: string[] = []
+    const mgr = makeManager(ref, {})
+    mgr.on('statechange', (s) => states.push(s))
+    mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
+    ref.current!.stdout.write('dsh web: http://127.0.0.1:11111\n')
+    await vi.waitFor(() => expect(mgr.state).toBe('ready'))
+    const old = ref.current!
+    await mgr.stop()
+    expect(mgr.state).toBe('idle')
+    // stop 后的 restart 是明确的用户意图，等同全新 start：正常拉起，不经 crashed/failed
+    await mgr.restart()
+    await vi.waitFor(() => expect(ref.current!).not.toBe(old))
+    ref.current!.stdout.write('dsh web: http://127.0.0.1:22222\n')
+    await vi.waitFor(() => expect(mgr.state).toBe('ready'))
+    expect(mgr.port).toBe(22222)
+    expect(states).not.toContain('crashed')
+    expect(states).not.toContain('failed')
+    await mgr.stop()
+  })
+
   it('late readiness line from a timed-out child emits no ready event and ends failed', async () => {
     const ref: { current?: FakeChild } = {}
     const got: number[] = []
     const mgr = makeManager(ref, { ready: (p) => got.push(p) }, { killExit: { manual: true } })
     mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
     const dying = ref.current!
     await vi.waitFor(() => expect(dying.killed).toBe(true)) // 已判死、未 exit
     dying.stdout.write('dsh web: http://127.0.0.1:9999\n') // 垂死 child 迟到的 ready 行
