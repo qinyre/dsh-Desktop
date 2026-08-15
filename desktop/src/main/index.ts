@@ -5,6 +5,7 @@ import { EventTap } from './events/event-tap'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime } from './sidecar/runtime-resolver'
+import { TrayController } from './tray/tray-controller'
 import { WindowController } from './windows/window-controller'
 
 // Windows toast 通知必需：不设 AppUserModelId 的打包应用通知会静默不显示；
@@ -39,6 +40,15 @@ if (!gotLock) {
       stateFile: join(paths.userDataDir, 'window-state.json'),
     })
     windows.createMainWindow()
+    // 托盘（设计书 §5）：关闭=隐藏到托盘（首次隐藏弹一次气泡），退出走托盘菜单（sidecar 一并结束）。
+    // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
+    const tray = new TrayController({
+      iconPath: join(__dirname, '../../resources/icon.png'),
+      logDir: paths.logDir,
+      onShow: () => { windows?.focus() },
+      onQuit: () => { app.quit() },
+    })
+    if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
     ipcMain.on('dosket:retry', () => sidecar?.retry())
     ipcMain.on('dosket:open-logs', () => { void shell.openPath(paths.logDir) })
     sidecar = new SidecarManager({
