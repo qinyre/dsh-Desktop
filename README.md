@@ -1,13 +1,15 @@
+**中文** | [English](README.en.md)
+
 <div align="center">
 
 # DSH Desktop
 
-**Zero-config desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh)**
+**[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的免配置桌面客户端**
 
-Install it, double-click it, chat. No Node.js, no pnpm, no terminal.
+安装、双击、开聊。不需要 Node.js，不需要 pnpm，不需要终端。
 
-<!-- TODO: replace with a real screenshot of the main window -->
-![DSH Desktop main window](docs/images/screenshot-main.png)
+<!-- TODO: 替换为主窗口真实截图 -->
+![DSH Desktop 主窗口](docs/images/screenshot-main.png)
 
 [![CI](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -19,118 +21,118 @@ Install it, double-click it, chat. No Node.js, no pnpm, no terminal.
 
 ---
 
-## Why
+## 为什么做这个
 
-DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstation: install Node, install dsh, keep a terminal open, remember the port. **DSH Desktop wraps the exact same Web UI in a native app** — bundling its own Node runtime and dsh, so the agent harness is a double-click away for everyone else.
+DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环境：装 Node、装 dsh、开着一个终端、记住端口号。**DSH Desktop 把同一套 Web UI 原封不动地装进原生应用**——自带 Node 运行时和 dsh，让不写代码的人也能双击即用地跑起 agent。
 
-## Highlights
+## 特性
 
-- **True zero-config** — the installer bundles everything. A machine with nothing but Windows runs the full dsh Web UI after one setup click.
-- **The real Web UI, unmodified** — every feature of `dsh web` (workspaces, sessions, approvals, models, skills, plan mode, terminals) runs inside the app window. DSH Desktop is a shell, not a reimplementation.
-- **Crash-resilient** — the sidecar is supervised with exponential-backoff restarts; dsh's append-only session log means a killed process never loses your conversation.
-- **Native notifications** — approvals waiting and turns finishing surface as Windows toasts when the window is hidden or unfocused. Close-to-tray keeps long agent runs out of your way.
-- **Built-in plugin manager** — install third-party dsh plugins from the tray menu. The app ships its own pnpm shim, so installing plugins needs no Node/pnpm on PATH.
-- **Auto-update with data backup** — updates ask before installing and back up your sessions, credentials, and settings first.
+- **真正的免配置** —— 安装包自带全部运行时。一台只有 Windows 的机器，点一次安装就能跑完整 dsh Web UI。
+- **原版 Web UI，零改动** —— `dsh web` 的全部功能（工作区、会话、审批、模型、技能、计划模式、终端）都在应用窗口里。DSH Desktop 是壳，不是重造轮子。
+- **崩溃自愈** —— sidecar 由带指数退避的监督器看护；dsh 的 append-only 会话日志保证进程被杀也丢不了对话。
+- **原生通知** —— 窗口隐藏或失焦时，等待审批与回合完成会以 Windows 通知弹出。关闭到托盘，长任务不挡桌面。
+- **内置插件管理器** —— 从托盘菜单安装第三方 dsh 插件。应用自带 pnpm shim，装插件不需要机器上有 Node/pnpm。
+- **自动更新 + 数据备份** —— 更新先询问再安装，安装前自动备份你的会话、凭据和设置。
 
-## Install
+## 安装
 
-Grab the latest `DSH Desktop Setup x.x.x.exe` from [**Releases**](https://github.com/qinyre/dsh-Desktop/releases) and run it.
+从 [**Releases**](https://github.com/qinyre/dsh-Desktop/releases) 下载最新的 `DSH Desktop Setup x.x.x.exe` 运行即可。
 
-<!-- TODO: add a Releases download badge/link once the first release is published -->
+<!-- TODO: 首个 Release 发布后补下载徽章/直达链接 -->
 
-Requirements: Windows 10/11 (x64). That's the list.
+环境要求：Windows 10/11（x64）。没了。
 
-### First run
+### 首次运行
 
-The app starts the sidecar and opens the dsh Web UI. Configure your API key in **Settings → Models** (same onboarding as the Web UI), pick a workspace, and start chatting.
+应用会启动 sidecar 并打开 dsh Web UI。在 **Settings → Models** 里配置 API key（与 Web UI 相同的引导流程），选好工作区，开聊。
 
-## Plugins
+## 插件
 
-DSH Desktop keeps all three of dsh's plugin capability layers:
+dsh 的三层插件能力在 DSH Desktop 里全部保留：
 
-| Layer | How |
+| 层 | 用法 |
 |---|---|
-| Per-session dynamic mounting | Choose the `cordis` agent preset in the Web UI — the agent writes and mounts plugins at runtime, no restart |
-| Plugin inventory & config | Settings → Plugins, as in the Web UI |
-| Third-party plugin packages | **Tray → 插件管理…** (Plugin Manager) |
+| 会话内动态挂载 | 在 Web UI 里选 `cordis` agent preset——agent 运行时自己写插件并挂载，无需重启 |
+| 插件清点与配置 | Settings → Plugins，与 Web UI 相同 |
+| 第三方插件包 | **托盘 → 插件管理…** |
 
-The plugin manager installs into the app's own profile, e.g.:
+插件管理器把包安装进应用自己的 profile，例如：
 
 ```text
 @linxin666/dsh-web-ui-all
 ```
 
-then click **重启生效** (restart to apply). Removing a plugin works the same way. Install output streams into the dialog, including pnpm's `allowBuilds` guidance for git-hosted plugins.
+然后点 **重启生效**。卸载同理。安装输出会流式显示在对话框里，包括 git 托管插件触发 pnpm `allowBuilds` 时的引导提示。
 
-> Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
+> 安装插件 = 在本机执行第三方代码（pnpm 生命周期脚本），与 dsh CLI 行为一致。请只安装你信任的插件。
 
-## How it works
+## 工作原理
 
 ```text
 ┌─ DSH Desktop (Electron) ─────────────────┐
-│  supervisor · window · tray · notifier    │
+│  进程监督 · 窗口 · 托盘 · 通知              │
 └────────────┬──────────────────────────────┘
              │ spawn (ELECTRON_RUN_AS_NODE)
              ▼
    dsh web --port 0 --host 127.0.0.1
-             │ stdout readiness line
+             │ stdout 就绪行
              ▼
-   window loads http://127.0.0.1:<random port>
+   窗口加载 http://127.0.0.1:<随机端口>
 ```
 
-- The sidecar reuses the Electron binary as its Node runtime — one runtime, no version drift.
-- The server binds a **random loopback port only**; it is never exposed to the network.
-- **Threat model, stated plainly:** the local HTTP API has no authentication (an upstream design point — it is a DNS-rebinding fence, not an auth layer). Any process running as your user could talk to it — but such a process could equally read dsh's on-disk credentials directly, so the marginal exposure is limited to "the machine is already compromised." See the upstream [connection docs](https://github.com/deepseek-ai/deepseek-harness) for the fence's exact scope.
+- sidecar 复用 Electron 二进制作为 Node 运行时——单一运行时，无版本分裂。
+- 服务只绑定**随机回环端口**，永不暴露到网络。
+- **威胁模型，明说：** 本地 HTTP API 没有鉴权（上游设计如此——那道栅栏防 DNS rebinding，不是鉴权层）。任何以你的用户身份运行的进程都能访问它——但这样的进程同样能直接读 dsh 落盘的凭据，边际风险限定在"本机已沦陷"的前提下。栅栏的准确范围见上游 [connection 文档](https://github.com/deepseek-ai/deepseek-harness)。
 
-## Development
+## 开发
 
-Prerequisites: Node.js ≥ 22.19 (or ≥ 24), npm. For the integration smokes you also need a sibling checkout of the upstream repo:
+前置条件：Node.js ≥ 22.19（或 ≥ 24）、npm。跑集成冒烟还需要一份上游源码的兄弟目录：
 
 ```bash
 git clone https://github.com/qinyre/dsh-Desktop.git
 cd dsh-Desktop
-git clone https://github.com/deepseek-ai/deepseek-harness.git   # dev-mode sidecar source
+git clone https://github.com/deepseek-ai/deepseek-harness.git   # dev 模式 sidecar 来源
 cd deepseek-harness && pnpm install && pnpm run build && cd ..
 cd desktop && npm install
 ```
 
 ```bash
-npm run dev            # launch the app (dev uses the source checkout)
-npm test               # unit tests
-npm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
-DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:plugin   # clean-PATH plugin install (Windows)
-npm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
-npm run dist           # build the NSIS installer
+npm run dev            # 启动应用（dev 模式使用源码仓）
+npm test               # 单元测试
+npm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
+DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:plugin   # 干净 PATH 插件安装冒烟（Windows）
+npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
+npm run dist           # 构建 NSIS 安装器
 ```
 
-Dev mode resolves the upstream checkout at `../deepseek-harness` (override with `DESKTOP_DSH_REPO`); `DESKTOP_DSH_MODE=npm` switches to the bundled registry package. Smokes self-skip when their prerequisites are absent.
+dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_REPO` 覆盖）；`DESKTOP_DSH_MODE=npm` 切换到捆绑的 npm 包。冒烟在前置条件缺失时自动跳过。
 
-### Project layout
+### 目录结构
 
 ```text
 desktop/
-├── src/main/sidecar/     # process supervision: state machine, runtime resolver, logs
-├── src/main/windows/     # window controller, navigation guard, status page
-├── src/main/events/      # EventTap: two downlink WebSockets → notifications
-├── src/main/plugins/     # plugin manager + runtime pnpm shim
-├── src/main/tray/        # tray controller
-├── src/main/updater/     # electron-updater + DSH_HOME backup
-└── src/renderer/         # status page + plugin dialog (the rest is dsh's Web UI)
+├── src/main/sidecar/     # 进程监督：状态机、运行时解析、日志
+├── src/main/windows/     # 窗口控制器、导航锁、状态页
+├── src/main/events/      # EventTap：两条下行 WebSocket → 通知
+├── src/main/plugins/     # 插件管理器 + 运行时 pnpm shim
+├── src/main/tray/        # 托盘
+├── src/main/updater/     # electron-updater + DSH_HOME 备份
+└── src/renderer/         # 状态页 + 插件对话框（其余全是 dsh 的 Web UI）
 ```
 
-## Roadmap
+## 路线图
 
-- [ ] First public release (icon, signed installer, update feed)
-- [ ] macOS and Linux builds
-- [ ] Route B: `file://` + IPC bridge (drops the local HTTP surface entirely)
+- [ ] 首个公开发布（图标、签名安装器、更新源）
+- [ ] macOS 与 Linux 构建
+- [ ] 路线 B：`file://` + IPC 桥接（彻底去掉本地 HTTP 面）
 
-## Acknowledgments
+## 致谢
 
-- [DeepSeek AI](https://github.com/deepseek-ai) for [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) — DSH Desktop is a thin shell around their work.
-- [Electron](https://www.electronjs.org/), [electron-vite](https://electron-vite.org/), [electron-builder](https://www.electron.build/), [pnpm](https://pnpm.io/).
+- [DeepSeek AI](https://github.com/deepseek-ai) 与 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)——DSH Desktop 只是他们工作外面的一层薄壳。
+- [Electron](https://www.electronjs.org/)、[electron-vite](https://electron-vite.org/)、[electron-builder](https://www.electron.build/)、[pnpm](https://pnpm.io/)。
 
-## License
+## 许可证
 
 [MIT](LICENSE) © 2026 qinyre
 
-DSH Desktop bundles [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) (MIT) and its dependencies; DeepSeek Harness is a project of DeepSeek AI, unaffiliated with this client.
+DSH Desktop 捆绑 [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh)（MIT）及其依赖；DeepSeek Harness 是 DeepSeek AI 的项目，与本客户端无隶属关系。
