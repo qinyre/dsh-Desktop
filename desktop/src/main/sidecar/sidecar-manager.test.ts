@@ -340,6 +340,38 @@ describe('SidecarManager', () => {
     expect(got).toEqual([])
     expect(mgr.port).toBeUndefined()
   })
+
+  it('spawn error without exit fails that round instead of crashing the process', async () => {
+    const ref: { current?: FakeChild } = {}
+    const states: string[] = []
+    const mgr = makeManager(ref, {})
+    mgr.on('statechange', (s) => states.push(s))
+    mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
+    // ENOENT/EACCES 类 spawn 失败只发 error 不发 exit；没有监听器的 EventEmitter error
+    // 会同步抛出（此处即测试失败），并按本轮终局 failed 处理——不是 crashed+自动重启。
+    ref.current!.emit('error', new Error('spawn fake ENOENT'))
+    await vi.waitFor(() => expect(mgr.state).toBe('failed'))
+    expect(states).not.toContain('crashed')
+    await new Promise((resolve) => setTimeout(resolve, 100)) // 静默期：无退避重启
+    expect(mgr.state).toBe('failed')
+    expect(mgr.port).toBeUndefined()
+  })
+
+  it('error followed by a late exit stays failed with no restart (no double handling)', async () => {
+    const ref: { current?: FakeChild } = {}
+    let spawns = 0
+    const mgr = makeManager(ref, {}, { onSpawn: () => { spawns += 1 } })
+    mgr.start()
+    await vi.waitFor(() => expect(ref.current).toBeDefined())
+    const dead = ref.current!
+    dead.emit('error', new Error('spawn EACCES'))
+    dead.emit('exit', 1) // error 之后又收到 exit：不得按崩溃走 crashed+退避
+    await vi.waitFor(() => expect(mgr.state).toBe('failed'))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(spawns).toBe(1)
+    expect(mgr.state).toBe('failed')
+  })
 })
 
 afterAll(() => rmSync(logDir, { recursive: true, force: true }))

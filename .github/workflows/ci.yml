@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  desktop:
+    # 设计书 §13.5：桌面端最小 CI——类型/单测/Node 版本防线。
+    # 真实 dsh 冒烟（smoke:sidecar / smoke:plugin）需要 desktop/../deepseek-harness
+    # 上游仓检出，CI 中不存在 → vitest 内部自动跳过（已接受的取舍）；
+    # 核心防线是单测 + check:electron（Electron 内置 Node 满足 dsh engines）。
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Electron Node version check
+        run: npm run check:electron
+      - name: Unit tests
+        run: npm test

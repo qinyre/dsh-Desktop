@@ -5,21 +5,24 @@ import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
-import { resolveRuntime } from './sidecar/runtime-resolver'
+import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { PluginManager } from './plugins/plugin-manager'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
+import { isPluginsPageSender } from './windows/navigation-guard'
 
 const require = createRequire(import.meta.url) // ESM/CJS 双格式安全（Bug 6 修复）
 // pnpm@10.34.5 的 exports 墙只放行 "."（映射到 ./package.json）——'pnpm/package.json'
 // 与 'pnpm/bin/pnpm.cjs' 子路径均被拒。锚点走主入口（即 package.json 的绝对路径）拼
 // bin/pnpm.cjs；老版 pnpm（无 exports 墙）则回退直接子路径解析。
+// 两条路径都必须过 toUnpackedPath：打包后解析出来的是 app.asar 内的路径，而 shim 跑的是
+// ELECTRON_RUN_AS_NODE 纯 Node 子进程，读不了 asar（与 dsh 入口同款映射，终审 Critical #1）。
 const resolvePnpmCli = (): string => {
   try {
-    return join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.cjs')
+    return toUnpackedPath(join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.cjs'))
   } catch {
-    return require.resolve('pnpm/bin/pnpm.cjs')
+    return toUnpackedPath(require.resolve('pnpm/bin/pnpm.cjs'))
   }
 }
 
@@ -91,9 +94,26 @@ if (!gotLock) {
       onOutput: (line) => { windows?.pluginDialog?.webContents.send('dosket:plugins-output', line) },
       restartSidecar: () => { void sidecar?.restart() }, // ready 态的重启生效必须走 restart()，retry() 是 no-op（Bug 1 修复）
     })
-    ipcMain.handle('dosket:plugins:list', () => pluginManager.listInstalled())
-    ipcMain.handle('dosket:plugins:run', (_e, args: unknown) => pluginManager.run(Array.isArray(args) ? args.map(String) : []))
-    ipcMain.on('dosket:restart-sidecar', () => { void sidecar?.restart() })
+    // 插件通道门禁（终审 Important #4；设计书 §7"安装=对话框明示同意"、§9）：主窗口与
+    // 插件对话框共用一份 preload，dsh 页（含第三方 /plugins/<id>/client.js）同样拿得到
+    // window.dosket.plugins——三个插件通道只接受插件页自身的 sender；dosket:retry /
+    // dosket:open-logs 是状态页/托盘级关注点，保持开放。handle 通道抛错 → 渲染端 invoke
+    // 拒绝；on 通道静默忽略。
+    const assertPluginsPageSender = (url: string): void => {
+      if (!isPluginsPageSender(url)) throw new Error(`plugin channel denied for sender: ${url}`)
+    }
+    ipcMain.handle('dosket:plugins:list', (event) => {
+      assertPluginsPageSender(event.senderFrame?.url ?? '')
+      return pluginManager.listInstalled()
+    })
+    ipcMain.handle('dosket:plugins:run', (event, args: unknown) => {
+      assertPluginsPageSender(event.senderFrame?.url ?? '')
+      return pluginManager.run(Array.isArray(args) ? args.map(String) : [])
+    })
+    ipcMain.on('dosket:restart-sidecar', (event) => {
+      if (!isPluginsPageSender(event.senderFrame?.url ?? '')) return
+      void sidecar?.restart()
+    })
 
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
     // 闭包里 windows（let）不可窄化，取 mainWindow 需 ?.；whenReady 只 resolve 一次，

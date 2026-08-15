@@ -9,6 +9,15 @@ export interface ResolvedRuntime {
 }
 
 /**
+ * ELECTRON_RUN_AS_NODE 的纯 Node 子进程读不了 asar：打包（app.asar 内）路径必须映射到
+ * app.asar.unpacked；dev 路径（不含 app.asar）原样返回。dsh 入口与 pnpm CLI 共用此映射
+ * ——"打包 vs dev 路径差异"这类回归已咬过两次，收敛为唯一的共享助手。
+ */
+export function toUnpackedPath(p: string): string {
+  return p.replace('app.asar', 'app.asar.unpacked')
+}
+
+/**
  * Assemble the sidecar/plugin child command (设计书 §3/§10)。
  * source：tsx ESM hook 加载仓库 CLI（AGENTS.md 的 source-launch 契约），cwd=仓库根。
  * npm：捆绑包 lib/bin.js；ELECTRON_RUN_AS_NODE 的纯 Node 读不了 asar，路径必须映射到 app.asar.unpacked。
@@ -37,7 +46,6 @@ export function resolveRuntime(opts: {
   const resolve = opts.resolve ?? ((id: string) => require.resolve(id))
   const pkgPath = resolve('@deepseek-ai/dsh/package.json')
   const entry = resolve('@deepseek-ai/dsh/lib/bin.js')
-  const unpacked = (p: string): string => p.replace('app.asar', 'app.asar.unpacked')
   void pkgPath // 存在性校验：解析失败会抛错，即"未捆绑 dsh"在设计书上要求 fail loud
-  return { command: opts.execPath, args: ['--expose-internals', unpacked(entry), ...opts.dshArgs], cwd: undefined }
+  return { command: opts.execPath, args: ['--expose-internals', toUnpackedPath(entry), ...opts.dshArgs], cwd: undefined }
 }

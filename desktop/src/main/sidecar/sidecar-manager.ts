@@ -231,5 +231,17 @@ export class SidecarManager {
         this.spawnSidecar()
       }, (this.opts.backoffFn ?? backoffDelayMs)(this.restarts))
     })
+
+    // spawn 失败（ENOENT/EACCES/杀软锁定可执行文件）只发 error、不保证发 exit：没有
+    // error 监听器的 EventEmitter 会把异常直接抛进主进程。按"本轮终局失败"处理（同
+    // 超时判死语义）：无进程可杀，仅在 child 仍是当前一轮时置 failed——stopping/换轮
+    // 场景由守卫压掉；error 之后迟到的 exit 走"非当前 child"分支，不会二次处理。
+    child.once('error', (error) => {
+      this.opts.logger.appendLine(String(error))
+      clearTimeout(readyTimer)
+      if (this.stopping || this.child !== child) return
+      this.child = undefined
+      this.setState('failed')
+    })
   }
 }

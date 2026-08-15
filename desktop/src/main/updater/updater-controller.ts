@@ -22,6 +22,11 @@ export class UpdaterController {
         autoUpdater.quitAndInstall()
       }
     })
+    // electron-updater 的下载/校验/安装失败以 'error' 事件抛出（EventEmitter error 无
+    // 监听器=主进程未捕获异常，弱网下必炸）：与下方 checkForUpdates 的 catch 同级兜底。
+    autoUpdater.on('error', (error) => {
+      console.warn('[dosket] updater error:', String(error))
+    })
     autoUpdater.checkForUpdates().catch((error) => {
       console.warn('[dosket] update check failed:', String(error)) // 离线/DNS/feed 不可达等失败仅记日志，不产生未处理 rejection
     })

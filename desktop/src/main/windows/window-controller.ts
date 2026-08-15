@@ -1,4 +1,5 @@
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, screen, shell } from 'electron'
+import type { Rectangle } from 'electron'
 import type { SidecarState } from '../sidecar/sidecar-manager'
 import { isAllowedNavigation, isSafeExternalUrl } from './navigation-guard'
 import { WindowStateStore } from './window-state-store'
@@ -24,13 +25,28 @@ export class WindowController {
 
   get mainWindow(): BrowserWindow | undefined { return this.win }
 
+  /**
+   * 恢复的窗口坐标可能在屏外（拔掉的显示器、缩水后的分辨率）：夹进最近显示器的
+   * 工作区再应用——整体出界即落回该工作区左上角，尺寸超工作区则收进工作区。
+   * Electron 耦合（screen 模块），不设单测，靠打包后手测披露。
+   */
+  private clampToVisibleDisplay(bounds: Rectangle): Rectangle {
+    const area = screen.getDisplayMatching(bounds).workArea
+    const width = Math.min(bounds.width, area.width)
+    const height = Math.min(bounds.height, area.height)
+    return {
+      x: Math.min(Math.max(bounds.x, area.x), area.x + area.width - width),
+      y: Math.min(Math.max(bounds.y, area.y), area.y + area.height - height),
+      width, height,
+    }
+  }
+
   /** 插件管理对话框（设计书 §7）：独立小窗，主窗口不因此隐藏/失能。 */
   get pluginDialog(): BrowserWindow | undefined { return this.pluginWin }
 
   createMainWindow(): BrowserWindow {
-    const bounds = this.store.load()
     this.win = new BrowserWindow({
-      ...bounds, minWidth: 800, minHeight: 600, show: false,
+      ...this.clampToVisibleDisplay(this.store.load()), minWidth: 800, minHeight: 600, show: false,
       webPreferences: { preload: this.opts.preloadPath, contextIsolation: true },
     })
     this.win.once('ready-to-show', () => this.win?.show())
