@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { app, ipcMain, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
+import { EventTap } from './events/event-tap'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime } from './sidecar/runtime-resolver'
@@ -50,6 +51,13 @@ if (!gotLock) {
       if (state === 'spawning' || state === 'crashed') windows?.showStatus('launching')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
     })
+    // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
+    // 闭包里 windows（let）不可窄化，取 mainWindow 需 ?.；whenReady 只 resolve 一次，
+    // before-quit 监听不会重复注册（与下方 sidecar 的 before-quit 互不影响）。
+    const eventTap = new EventTap({ getMainWindow: () => windows?.mainWindow })
+    eventTap.attach(sidecar)
+    app.on('before-quit', () => eventTap.close())
+
     sidecar.start()
   })
   // before-quit 同步生命周期里 `void stop()` 即可——Windows 硬杀即时完成；POSIX 分支的
