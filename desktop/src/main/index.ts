@@ -7,7 +7,7 @@ import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
-import { applyMarketConfig, DSHMARKET_SPEC, marketSeeded, seedDshmarket } from './plugins/market-seed'
+import { applyMarketConfig, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedDshmarket, seedInstaller } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
@@ -103,6 +103,18 @@ if (!gotLock) {
         applyMarketConfig(join(paths.dshHome, 'profiles', 'web'))
       } else {
         logger.appendLine(`[dsh-desktop] market seed failed (exit ${code}); retrying next launch`)
+      }
+    }
+    // 预装插件安装器（设置页「安装」Tab，qinyre/dsh-plugin-install）。无需配置覆盖：
+    // 桌面模式下其重启按钮经 dsh:restart-sidecar IPC 交回壳层，没有脱管自重启。
+    if (paths.dshHome !== undefined && !installerSeeded(paths.dshHome)) {
+      logger.appendLine(`[dsh-desktop] seeding plugin installer (${INSTALLER_SPEC})`)
+      const code = await seedInstaller({
+        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
+      })
+      if (code !== 0) {
+        logger.appendLine(`[dsh-desktop] installer seed failed (exit ${code}); retrying next launch`)
       }
     }
     sidecar = new SidecarManager({

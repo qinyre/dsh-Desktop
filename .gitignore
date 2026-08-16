@@ -20,3 +20,6 @@ out/
 # 环境变量
 .env
 .env.local
+
+# 已拆分的插件独立仓库（本地检出），不纳入本仓库
+/dsh-plugin-install/

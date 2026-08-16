@@ -7,37 +7,54 @@ import { resolveRuntime, type RuntimeMode } from '../sidecar/runtime-resolver'
 /** 预装的市场版本：只在预装时钉住，市场自身可在设置页走更新通道升级。 */
 export const DSHMARKET_SPEC = 'dshmarket@1.6.0'
 
-/** profile 是否已装市场：以 dsh.profile.bundles 收录 dshmarket 为准（reconcile 的落点）。 */
-export function marketSeeded(dshHome: string | undefined): boolean {
+/**
+ * 预装的插件安装器版本（qinyre/dsh-plugin-install）：同样只在预装时钉住。
+ * 桌面模式下其「重启服务」按钮经 dsh:restart-sidecar IPC 交回壳层（见 index.ts），
+ * 无需任何 patch 配置覆盖——与市场不同，它没有脱离监督的自重启路径。
+ */
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.1.1'
+
+/** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
+export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
   if (dshHome === undefined) return false
   const manifest = join(dshHome, 'profiles', 'web', 'package.json')
   if (!existsSync(manifest)) return false
   try {
     const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
     const bundles = parsed.dsh?.profile?.bundles
-    return Array.isArray(bundles) && bundles.includes('dshmarket')
+    return Array.isArray(bundles) && bundles.includes(name)
   } catch {
     return false
   }
 }
 
+/** profile 是否已装市场。 */
+export function marketSeeded(dshHome: string | undefined): boolean {
+  return bundleSeeded(dshHome, 'dshmarket')
+}
+
+/** profile 是否已装插件安装器。 */
+export function installerSeeded(dshHome: string | undefined): boolean {
+  return bundleSeeded(dshHome, 'dsh-plugin-install')
+}
+
 /**
- * 经 dsh CLI 预装市场，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile 尚不存在）
- * 与 reconcile（把声明 bundle 的依赖写回 dsh.profile.bundles）。命令形态与 sidecar 完全
- * 一致（resolveRuntime），市场的 dshArgv() 在运行期重调 CLI 时也依赖同一形态。
+ * 经 dsh CLI 预装一个 bundle，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile
+ * 尚不存在）与 reconcile（把声明 bundle 的依赖写回 dsh.profile.bundles）。命令形态与
+ * sidecar 完全一致（resolveRuntime），市场的 dshArgv() 在运行期重调 CLI 时也依赖同一形态。
  */
-export async function seedDshmarket(opts: {
+export async function seedBundle(opts: {
   mode: RuntimeMode
   execPath: string
   repoRoot: string
   env: NodeJS.ProcessEnv
   resolve?: (id: string) => string
-  spec?: string
+  spec: string
   onOutput?: (line: string) => void
 }): Promise<number> {
   const { command, args, cwd } = resolveRuntime({
     mode: opts.mode, execPath: opts.execPath, repoRoot: opts.repoRoot, resolve: opts.resolve,
-    dshArgs: ['plugin', '--profile', 'web', 'add', opts.spec ?? DSHMARKET_SPEC],
+    dshArgs: ['plugin', '--profile', 'web', 'add', opts.spec],
   })
   const child = spawn(command, args, { cwd: cwd ?? process.cwd(), env: opts.env, stdio: ['ignore', 'pipe', 'pipe'] })
   for (const stream of [child.stdout, child.stderr]) {
@@ -48,6 +65,32 @@ export async function seedDshmarket(opts: {
     child.once('close', (code) => resolve(code ?? 1))
     child.once('error', (error) => { opts.onOutput?.(String(error)); resolve(1) })
   })
+}
+
+/** 预装插件市场（dshmarket）。 */
+export async function seedDshmarket(opts: {
+  mode: RuntimeMode
+  execPath: string
+  repoRoot: string
+  env: NodeJS.ProcessEnv
+  resolve?: (id: string) => string
+  spec?: string
+  onOutput?: (line: string) => void
+}): Promise<number> {
+  return seedBundle({ ...opts, spec: opts.spec ?? DSHMARKET_SPEC })
+}
+
+/** 预装插件安装器（dsh-plugin-install，设置页的「安装」Tab）。 */
+export async function seedInstaller(opts: {
+  mode: RuntimeMode
+  execPath: string
+  repoRoot: string
+  env: NodeJS.ProcessEnv
+  resolve?: (id: string) => string
+  spec?: string
+  onOutput?: (line: string) => void
+}): Promise<number> {
+  return seedBundle({ ...opts, spec: opts.spec ?? INSTALLER_SPEC })
 }
 
 /** 市场行 id（其自带 cordis.patch.yml 的 insert id），配置覆盖以此为目标。 */
