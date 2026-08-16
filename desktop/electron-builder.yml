@@ -18,8 +18,10 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-# 本仓库尚无远端/发布仓：不显式置 null 时 electron-builder 会在生成 latest.yml 的
-# update-info 阶段因解析不到 publish provider 而抛 NPE（updateInfoBuilder）。
-# 发布流水线接入真实 feed 时，替换为 { provider: github, ... } 或 generic provider，
-# 届时 latest.yml 才会随安装器一并产出（运行期 feed 由 DSH_DESKTOP_FEED_URL 覆盖）。
-publish: null
+# latest.yml（更新元数据）的生成需要显式 provider；构建脚本带 --publish never，
+# 只在本地产出 latest.yml/blockmap 不上传——资产随 GitHub Release 手动上传，
+# 运行期更新检查由 DSH_DESKTOP_FEED_URL 显式开启（updater 未设 feed 时静默跳过）。
+publish:
+  provider: github
+  owner: qinyre
+  repo: dsh-Desktop

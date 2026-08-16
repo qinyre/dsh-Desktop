@@ -15,7 +15,7 @@
     "smoke:sidecar": "vitest run -t \"sidecar smoke\"",
     "smoke:market": "vitest run -t \"market seed smoke\"",
     "smoke:picker": "electron scripts/picker-readutf16-smoke.cjs",
-    "dist": "electron-vite build && electron-builder --win nsis",
+    "dist": "electron-vite build && electron-builder --win nsis --publish never",
     "dist:signed": "node scripts/check-signing-env.mjs && electron-vite build && electron-builder --win nsis --config electron-builder.signed.mjs && node scripts/verify-signature.mjs",
     "postinstall": "patch-package",
     "icons": "node scripts/make-icons.mjs"
