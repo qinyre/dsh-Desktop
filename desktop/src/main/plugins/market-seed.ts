@@ -14,6 +14,13 @@ export const DSHMARKET_SPEC = 'dshmarket@1.6.0'
  */
 export const INSTALLER_SPEC = 'dsh-plugin-install@0.1.1'
 
+/**
+ * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页「技能」「MCP」Tab）。
+ * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
+ * IPC 交回壳层。
+ */
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.1.1'
+
 /** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
 export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
   if (dshHome === undefined) return false
@@ -36,6 +43,11 @@ export function marketSeeded(dshHome: string | undefined): boolean {
 /** profile 是否已装插件安装器。 */
 export function installerSeeded(dshHome: string | undefined): boolean {
   return bundleSeeded(dshHome, 'dsh-plugin-install')
+}
+
+/** profile 是否已装能力管理插件（技能/MCP）。 */
+export function capabilitiesSeeded(dshHome: string | undefined): boolean {
+  return bundleSeeded(dshHome, 'dsh-plugin-capabilities')
 }
 
 /**
@@ -91,6 +103,19 @@ export async function seedInstaller(opts: {
   onOutput?: (line: string) => void
 }): Promise<number> {
   return seedBundle({ ...opts, spec: opts.spec ?? INSTALLER_SPEC })
+}
+
+/** 预装能力管理插件（dsh-plugin-capabilities，设置页的「技能」「MCP」Tab）。 */
+export async function seedCapabilities(opts: {
+  mode: RuntimeMode
+  execPath: string
+  repoRoot: string
+  env: NodeJS.ProcessEnv
+  resolve?: (id: string) => string
+  spec?: string
+  onOutput?: (line: string) => void
+}): Promise<number> {
+  return seedBundle({ ...opts, spec: opts.spec ?? CAPABILITIES_SPEC })
 }
 
 /** 市场行 id（其自带 cordis.patch.yml 的 insert id），配置覆盖以此为目标。 */

@@ -32,6 +32,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - The [dshmarket](https://github.com/dsh-market/dsh-market) plugin market is preinstalled: browse, search, and install community plugins from the in-app settings page — no Node/pnpm needed on the machine.
 - An "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)) is preinstalled too: install any dsh plugin by package name, including ones the market doesn't list.
+- "Skills" and "MCP" tabs ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)) are preinstalled as well: manage the skill catalog and MCP servers from the settings page, importing config from Claude Code or Codex.
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
@@ -57,7 +58,7 @@ DSH Desktop keeps all three of dsh's plugin capability layers:
 | Plugin inventory & config | Settings → Plugins, as in the Web UI |
 | Third-party plugin packages | The plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)) or the "Install" tab (direct install by npm spec), both inside the settings page |
 
-On first launch DSH Desktop preinstalls two plugins into the app's own profile. dshmarket is a visual plugin market living in the Web UI's settings page, covering the curated [awesome-dsh-plugin](https://awesome-dsh-plugin.com) directory: browse, search, one-click install/uninstall, and per-plugin updates — the market updates itself through the same channel. dsh-plugin-install contributes an "Install" tab: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly, no market round-trip. Client-only plugins activate after a page refresh; changes that need a restart show a pending notice, and the restart itself is done from the tray menu's「重启服务」(restart service).
+On first launch DSH Desktop preinstalls three plugins into the app's own profile. dshmarket is a visual plugin market living in the Web UI's settings page, covering the curated [awesome-dsh-plugin](https://awesome-dsh-plugin.com) directory: browse, search, one-click install/uninstall, and per-plugin updates — the market updates itself through the same channel. dsh-plugin-install contributes an "Install" tab: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly, no market round-trip. dsh-plugin-capabilities adds "Skills" and "MCP" tabs: create, edit, and delete skills in the catalog; manage MCP servers (stdio commands or http URLs) the same way; and pull in skills plus MCP config from Claude Code or Codex — whichever of those agents exists on the machine shows up as a source. Client-only plugins activate after a page refresh; changes that need a restart show a pending notice, and the restart itself is done from the tray menu's「重启服务」(restart service).
 
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 

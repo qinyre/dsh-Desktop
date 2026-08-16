@@ -7,7 +7,7 @@ import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
-import { applyMarketConfig, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedDshmarket, seedInstaller } from './plugins/market-seed'
+import { applyMarketConfig, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedCapabilities, seedDshmarket, seedInstaller } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
@@ -119,6 +119,18 @@ if (!gotLock) {
       })
       if (code !== 0) {
         logger.appendLine(`[dsh-desktop] installer seed failed (exit ${code}); retrying next launch`)
+      }
+    }
+    // 预装能力管理插件（设置页「技能」「MCP」Tab，qinyre/dsh-plugin-capabilities）。
+    // 同样无需配置覆盖：待重启横幅经 dsh:restart-sidecar IPC 交回壳层。
+    if (paths.dshHome !== undefined && !capabilitiesSeeded(paths.dshHome)) {
+      logger.appendLine(`[dsh-desktop] seeding capabilities plugin (${CAPABILITIES_SPEC})`)
+      const code = await seedCapabilities({
+        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
+      })
+      if (code !== 0) {
+        logger.appendLine(`[dsh-desktop] capabilities seed failed (exit ${code}); retrying next launch`)
       }
     }
     sidecar = new SidecarManager({

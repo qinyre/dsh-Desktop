@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'nod
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { applyMarketConfig, bundleSeeded, installerSeeded, marketSeeded } from './market-seed'
+import { applyMarketConfig, bundleSeeded, capabilitiesSeeded, installerSeeded, marketSeeded } from './market-seed'
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-desktop-market-seed-'))
 const profileDir = join(root, 'profiles', 'web')
@@ -40,6 +40,20 @@ describe('installerSeeded', () => {
   it('false on missing home', () => {
     expect(installerSeeded(undefined)).toBe(false)
     expect(bundleSeeded(join(root, 'no-such-home'), 'dshmarket')).toBe(false)
+  })
+})
+
+describe('capabilitiesSeeded', () => {
+  it('tracks dsh-plugin-capabilities independently of the other seeds', () => {
+    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dshmarket', 'dsh-plugin-install']))
+    expect(capabilitiesSeeded(root)).toBe(false)
+    expect(installerSeeded(root)).toBe(true)
+    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dshmarket', 'dsh-plugin-install', 'dsh-plugin-capabilities']))
+    expect(capabilitiesSeeded(root)).toBe(true)
+  })
+  it('false on missing home', () => {
+    expect(capabilitiesSeeded(undefined)).toBe(false)
+    expect(capabilitiesSeeded(join(root, 'no-such-home'))).toBe(false)
   })
 })
 
