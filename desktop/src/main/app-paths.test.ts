@@ -9,6 +9,7 @@ describe('resolveAppPaths / buildSidecarEnv', () => {
     const env = buildSidecarEnv(paths, { PATH: 'x' })
     expect(env.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(env.DSH_HOME).toBe('/ud/dsh-home')
+    expect(env.DSH_DESKTOP).toBe('1')
   })
   it('dev: source mode, DSH_HOME untouched', () => {
     const paths = resolveAppPaths({ packaged: false, env: { DESKTOP_DSH_MODE: 'source' }, userDataDir: '/ud', repoRoot: '/repo' })

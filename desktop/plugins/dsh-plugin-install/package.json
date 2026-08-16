@@ -1,0 +1,50 @@
+{
+  "name": "dsh-plugin-install",
+  "version": "0.1.0",
+  "description": "Install any dsh plugin by npm spec — right inside Settings. · 在设置页里按包名安装任意 dsh 插件（不经过插件市场）。",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "keywords": ["deepseek", "harness", "dsh", "dsh-plugin", "plugin-manager", "install"],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "src", "cordis.patch.yml", "LICENSE"],
+  "scripts": {
+    "build": "node scripts/build-node.mjs && node scripts/build-client.mjs && node scripts/verify-bundle.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "bundle-check": "node scripts/verify-bundle.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "~18.3.1",
+    "esbuild": "^0.24.0",
+    "react": "^18.3.1",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

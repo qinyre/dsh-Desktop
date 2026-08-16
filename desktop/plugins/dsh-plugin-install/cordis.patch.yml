@@ -1,0 +1,7 @@
+# dsh-plugin-install bundle patch: insert the installer host into a profile's
+# layer stack. The node half registers /dsh-plugin-install/* routes on the web
+# server; the client half contributes the "安装/Install" tab into Settings →
+# Plugins. Both halves share this one row:
+- insert:
+    - id: dsh-plugin-install
+      name: 'dsh-plugin-install'
