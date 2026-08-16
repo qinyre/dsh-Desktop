@@ -17,4 +17,12 @@ describe('resolveAppPaths / buildSidecarEnv', () => {
     expect(env.DSH_HOME).toBeUndefined()
     expect(env.ELECTRON_RUN_AS_NODE).toBe('1')
   })
+  it('shimDir is prepended to PATH for the whole sidecar tree', () => {
+    const paths = resolveAppPaths({ packaged: true, env: {}, userDataDir: '/ud', repoRoot: '/repo' })
+    const env = buildSidecarEnv(paths, { PATH: 'x' }, { shimDir: '/ud/bin' })
+    const delim = process.platform === 'win32' ? ';' : ':'
+    expect(env.PATH).toBe(`/ud/bin${delim}x`)
+    const bare = buildSidecarEnv(paths, { PATH: 'x' })
+    expect(bare.PATH).toBe('x')
+  })
 })

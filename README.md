@@ -31,7 +31,7 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 - Web UI 原封不动：`dsh web` 的工作区、会话、审批、模型、技能、终端都在应用窗口里，DSH Desktop 只是外面那层壳。
 - sidecar 有监督重启（指数退避），进程崩了会自动拉起；dsh 的 append-only 会话日志也保证对话不丢。
 - 窗口隐藏或失焦时，等待中的审批和回合结束会发 Windows 原生通知；窗口可以关闭到托盘，长任务在后台继续。
-- 托盘菜单里有插件管理器，装第三方 dsh 插件不需要机器上有 Node/pnpm。
+- 预装 [dshmarket](https://github.com/dsh-market/dsh-market) 插件市场，在设置页浏览、搜索、一键安装社区插件；机器上不需要有 Node/pnpm。
 - 更新安装前会先询问，并自动备份会话、凭据和设置。
 
 ## 安装
@@ -54,15 +54,15 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 |---|---|
 | 会话内动态挂载 | 在 Web UI 里选 `cordis` agent preset——agent 运行时自己写插件并挂载，无需重启 |
 | 插件清点与配置 | Settings → Plugins，与 Web UI 相同 |
-| 第三方插件包 | 在托盘菜单打开插件管理器安装 |
+| 第三方插件包 | 设置页内的插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)） |
 
-插件管理器把包安装进应用自己的 profile。输入包名（例如 `@linxin666/dsh-web-ui-all`）开始安装，完成后点 **重启生效** 让插件加载，卸载走同一个对话框。安装过程的输出会实时显示在对话框里，git 托管插件触发 pnpm `allowBuilds` 时也会给出相应提示。
+DSH Desktop 首次启动会把 dshmarket 预装进应用自己的 profile：一个跑在 Web UI 设置页里的可视化插件市场，收录 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 精选目录，支持浏览、搜索、一键安装/卸载和逐插件更新，市场自身也走同一通道升级。纯客户端插件安装后刷新页面即可生效；需要重启的变更会在市场里显示待重启提示，此时从托盘菜单选「重启服务」。
 
 > 安装插件会在本机执行第三方代码（pnpm 生命周期脚本），这一点与 dsh CLI 相同。请只安装来源可信的插件。
 
 ## 工作原理
 
-DSH Desktop 是一个 Electron 壳。启动时它通过 `ELECTRON_RUN_AS_NODE` 把 Electron 二进制当作 Node 运行时，拉起子进程 `dsh web --port 0 --host 127.0.0.1`，从 stdout 的就绪行解析出实际端口，再让窗口加载 `http://127.0.0.1:<端口>`。整个应用只有一个运行时，不存在 Node 版本分裂；服务也只绑定随机回环端口，不会暴露到网络。
+DSH Desktop 是一个 Electron 壳。启动时它通过 `ELECTRON_RUN_AS_NODE` 把 Electron 二进制当作 Node 运行时，拉起子进程 `dsh web --port 0 --host 127.0.0.1`，从 stdout 的就绪行解析出实际端口，再让窗口加载 `http://127.0.0.1:<端口>`。整个应用只有一个运行时，不存在 Node 版本分裂；服务也只绑定随机回环端口，不会暴露到网络。应用还会在 userData 里生成一个 pnpm shim 并前置进 sidecar 的 PATH——dsh CLI 和插件市场的安装子进程由此在没有任何 Node 的机器上找到 pnpm。
 
 本地 HTTP API 没有鉴权，这是上游的设计——Origin 栅栏防的是 DNS rebinding，不是本地进程。任何以你的用户身份运行的进程都能访问它，但这类进程同样能直接读取 dsh 落盘的凭据，所以实际的额外风险只在"本机已被攻陷"这一前提下成立。栅栏的准确范围见上游 [connection 文档](https://github.com/deepseek-ai/deepseek-harness)。
 
@@ -82,7 +82,7 @@ cd desktop && npm install
 npm run dev            # 启动应用（dev 模式使用源码仓）
 npm test               # 单元测试
 npm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
-DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:plugin   # 干净 PATH 插件安装冒烟（Windows）
+DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # 干净 PATH 市场预装冒烟（Windows）
 npm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
 npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
 npm run dist           # 构建 NSIS 安装器

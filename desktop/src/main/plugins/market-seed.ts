@@ -1,0 +1,76 @@
+import { spawn } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
+import { join } from 'node:path'
+import { resolveRuntime, type RuntimeMode } from '../sidecar/runtime-resolver'
+
+/** 预装的市场版本：只在预装时钉住，市场自身可在设置页走更新通道升级。 */
+export const DSHMARKET_SPEC = 'dshmarket@1.6.0'
+
+/** profile 是否已装市场：以 dsh.profile.bundles 收录 dshmarket 为准（reconcile 的落点）。 */
+export function marketSeeded(dshHome: string | undefined): boolean {
+  if (dshHome === undefined) return false
+  const manifest = join(dshHome, 'profiles', 'web', 'package.json')
+  if (!existsSync(manifest)) return false
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
+    const bundles = parsed.dsh?.profile?.bundles
+    return Array.isArray(bundles) && bundles.includes('dshmarket')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 经 dsh CLI 预装市场，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile 尚不存在）
+ * 与 reconcile（把声明 bundle 的依赖写回 dsh.profile.bundles）。命令形态与 sidecar 完全
+ * 一致（resolveRuntime），市场的 dshArgv() 在运行期重调 CLI 时也依赖同一形态。
+ */
+export async function seedDshmarket(opts: {
+  mode: RuntimeMode
+  execPath: string
+  repoRoot: string
+  env: NodeJS.ProcessEnv
+  resolve?: (id: string) => string
+  spec?: string
+  onOutput?: (line: string) => void
+}): Promise<number> {
+  const { command, args, cwd } = resolveRuntime({
+    mode: opts.mode, execPath: opts.execPath, repoRoot: opts.repoRoot, resolve: opts.resolve,
+    dshArgs: ['plugin', '--profile', 'web', 'add', opts.spec ?? DSHMARKET_SPEC],
+  })
+  const child = spawn(command, args, { cwd: cwd ?? process.cwd(), env: opts.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  for (const stream of [child.stdout, child.stderr]) {
+    if (stream !== null) createInterface({ input: stream }).on('line', (line) => opts.onOutput?.(line))
+  }
+  return await new Promise<number>((resolve) => {
+    // close（而非 exit）：等 stdio 排空；spawn 失败只发 error 不发 exit，须兜底防挂起。
+    child.once('close', (code) => resolve(code ?? 1))
+    child.once('error', (error) => { opts.onOutput?.(String(error)); resolve(1) })
+  })
+}
+
+/** 市场行 id（其自带 cordis.patch.yml 的 insert id），配置覆盖以此为目标。 */
+const MARKET_ENTRY_ID = 'dsh-market'
+
+/**
+ * 在 profile 自有 patch 层追加市场配置覆盖：关掉自重启。市场的 scheduleRestart 会经
+ * 脱管 helper spawn 替代 dsh 进程再退出自身——在桌面应用的 sidecar 监督下这会留下一个
+ * 无人认领的进程并触发监督器重生（双进程）；重启由应用层（sidecar.restart）负责。
+ * 上游模板以空 flow 序列 `[]` 占位，须摘掉才能追加块序列项。
+ */
+export function applyMarketConfig(profileDir: string): void {
+  const patchPath = join(profileDir, 'cordis.patch.yml')
+  const content = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
+  if (new RegExp(`^-\\s+id:\\s*'?${MARKET_ENTRY_ID}'?\\s*$`, 'm').test(content)) return
+  const stripped = content.replace(/^\s*\[\]\s*$/m, '').trimEnd()
+  const block = [
+    '',
+    '# dsh-desktop: 市场的自重启会在应用监督外 spawn 替代进程，重启交由应用层负责。',
+    `- id: ${MARKET_ENTRY_ID}`,
+    '  config:',
+    '    allowRestart: false',
+    '',
+  ].join('\n')
+  writeFileSync(patchPath, stripped + block, 'utf8')
+}

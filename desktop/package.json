@@ -12,7 +12,7 @@
     "test": "vitest run",
     "check:electron": "electron scripts/check-node.mjs",
     "smoke:sidecar": "vitest run -t \"sidecar smoke\"",
-    "smoke:plugin": "vitest run -t \"plugin smoke\"",
+    "smoke:market": "vitest run -t \"market seed smoke\"",
     "smoke:picker": "electron scripts/picker-readutf16-smoke.cjs",
     "dist": "electron-vite build && electron-builder --win nsis",
     "postinstall": "patch-package"

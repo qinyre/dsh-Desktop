@@ -6,11 +6,11 @@ import { EventTap } from './events/event-tap'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
-import { PluginManager } from './plugins/plugin-manager'
+import { ensurePnpmShim } from './plugins/pnpm-shim'
+import { applyMarketConfig, DSHMARKET_SPEC, marketSeeded, seedDshmarket } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
-import { isPluginsPageSender } from './windows/navigation-guard'
 
 const require = createRequire(import.meta.url) // ESM/CJS 双格式安全（Bug 6 修复）
 // pnpm@10.34.5 的 exports 墙只放行 "."（映射到 ./package.json）——'pnpm/package.json'
@@ -45,7 +45,7 @@ if (!gotLock) {
   app.quit()
 } else {
   app.on('second-instance', () => { windows?.focus() })
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     const paths = resolveAppPaths({ packaged: app.isPackaged, env: process.env, userDataDir: app.getPath('userData'), repoRoot })
     const logger = new SidecarLogger(paths.logDir)
     // electron-vite dev 下渲染页来自 dev server、out/renderer 可能过期：优先用 ELECTRON_RENDERER_URL；
@@ -54,35 +54,58 @@ if (!gotLock) {
     const statusPagePath = rendererUrl !== undefined
       ? new URL('status/index.html', rendererUrl).href
       : join(__dirname, '../renderer/status/index.html')
-    const pluginsPagePath = rendererUrl !== undefined
-      ? new URL('plugins/index.html', rendererUrl).href
-      : join(__dirname, '../renderer/plugins/index.html')
     windows = new WindowController({
       getState: () => sidecar?.state ?? 'idle',
       onRetry: () => { sidecar?.retry() },
       logDir: paths.logDir,
       preloadPath: join(__dirname, '../preload/index.js'),
       statusPagePath,
-      pluginsPagePath,
       stateFile: join(paths.userDataDir, 'window-state.json'),
     })
     const win = windows.createMainWindow()
     if (!app.isPackaged) win.webContents.openDevTools({ mode: 'detach' })
+    // 零配置桥（设计书 §7 演进：第三方插件管理移交 dshmarket 插件）：shim 目录前置进
+    // sidecar PATH——dsh CLI 与市场重调的 CLI 子进程都靠它在无 Node 机器上找到 pnpm。
+    const shimDir = join(paths.userDataDir, 'bin')
+    let sidecarEnv = buildSidecarEnv(paths, process.env)
+    try {
+      await ensurePnpmShim({ execPath: process.execPath, shimDir, resolvePnpmCli })
+      sidecarEnv = buildSidecarEnv(paths, process.env, { shimDir })
+    } catch (error) {
+      logger.appendLine(`[dsh-desktop] pnpm shim unavailable (${String(error)}); plugin installs will need a system pnpm`)
+    }
     // 托盘（设计书 §5）：关闭=隐藏到托盘（首次隐藏弹一次气泡），退出走托盘菜单（sidecar 一并结束）。
+    // 插件管理已由 Web UI 内的 dshmarket 接管：入口只聚焦主窗口；「重启服务」承接市场的
+    // 待重启提示（market 自重启已通过配置关闭，重启必须走 sidecar.restart 保持监督）。
     // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
     const tray = new TrayController({
       iconPath: join(__dirname, '../../resources/icon.png'),
       logDir: paths.logDir,
       onShow: () => { windows?.focus() },
-      onPlugins: () => { windows?.openPluginDialog() },
+      onMarket: () => { windows?.focus() },
+      onRestart: () => { void sidecar?.restart() },
       onQuit: () => { app.quit() },
     })
     if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
     ipcMain.on('dsh:retry', () => sidecar?.retry())
     ipcMain.on('dsh:open-logs', () => { void shell.openPath(paths.logDir) })
+    // 预装插件市场（仅打包模式：dev 不动用户的真实 DSH_HOME）。经 dsh CLI 安装，首启时
+    // profile 尚不存在也成立（CLI 自带初始化 + reconcile）；失败不阻断启动，下次再试。
+    if (paths.dshHome !== undefined && !marketSeeded(paths.dshHome)) {
+      logger.appendLine(`[dsh-desktop] seeding plugin market (${DSHMARKET_SPEC})`)
+      const code = await seedDshmarket({
+        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
+      })
+      if (code === 0) {
+        applyMarketConfig(join(paths.dshHome, 'profiles', 'web'))
+      } else {
+        logger.appendLine(`[dsh-desktop] market seed failed (exit ${code}); retrying next launch`)
+      }
+    }
     sidecar = new SidecarManager({
       runtime: () => resolveRuntime({ mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot, dshArgs: ['web', '--port', '0', '--host', '127.0.0.1'] }),
-      env: buildSidecarEnv(paths, process.env),
+      env: sidecarEnv,
       logger,
     })
     sidecar.on('ready', (port) => { windows?.loadDsh(port) })
@@ -90,36 +113,6 @@ if (!gotLock) {
       if (state === 'spawning' || state === 'crashed') windows?.showStatus('launching')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
     })
-    // 插件管理（设计书 §7）：dsh plugin 的宿主进程 + IPC 通道；输出逐行推给对话框。
-    const pluginManager = new PluginManager({
-      mode: paths.mode, execPath: process.execPath, repoRoot,
-      dshHome: paths.dshHome, sidecarEnv: buildSidecarEnv(paths, process.env),
-      shimDir: join(paths.userDataDir, 'bin'),
-      resolvePnpmCli,
-      onOutput: (line) => { windows?.pluginDialog?.webContents.send('dsh:plugins-output', line) },
-      restartSidecar: () => { void sidecar?.restart() }, // ready 态的重启生效必须走 restart()，retry() 是 no-op（Bug 1 修复）
-    })
-    // 插件通道门禁（终审 Important #4；设计书 §7"安装=对话框明示同意"、§9）：主窗口与
-    // 插件对话框共用一份 preload，dsh 页（含第三方 /plugins/<id>/client.js）同样拿得到
-    // window.dshDesktop.plugins——三个插件通道只接受插件页自身的 sender；dsh:retry /
-    // dsh:open-logs 是状态页/托盘级关注点，保持开放。handle 通道抛错 → 渲染端 invoke
-    // 拒绝；on 通道静默忽略。
-    const assertPluginsPageSender = (url: string): void => {
-      if (!isPluginsPageSender(url)) throw new Error(`plugin channel denied for sender: ${url}`)
-    }
-    ipcMain.handle('dsh:plugins:list', (event) => {
-      assertPluginsPageSender(event.senderFrame?.url ?? '')
-      return pluginManager.listInstalled()
-    })
-    ipcMain.handle('dsh:plugins:run', (event, args: unknown) => {
-      assertPluginsPageSender(event.senderFrame?.url ?? '')
-      return pluginManager.run(Array.isArray(args) ? args.map(String) : [])
-    })
-    ipcMain.on('dsh:restart-sidecar', (event) => {
-      if (!isPluginsPageSender(event.senderFrame?.url ?? '')) return
-      void sidecar?.restart()
-    })
-
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
     // 闭包里 windows（let）不可窄化，取 mainWindow 需 ?.；whenReady 只 resolve 一次，
     // before-quit 监听不会重复注册（与下方 sidecar 的 before-quit 互不影响）。

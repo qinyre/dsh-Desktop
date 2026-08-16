@@ -9,7 +9,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           status: resolve('src/renderer/status/index.html'),
-          plugins: resolve('src/renderer/plugins/index.html'),
         },
       },
     },
