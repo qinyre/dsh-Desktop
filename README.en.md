@@ -89,6 +89,7 @@ npm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
 npm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
 npm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
 npm run dist           # build the NSIS installer
+npm run verify:bundle  # packaged-app self-check: dependency closure + real boot from an isolated copy (run before every release)
 npm run dist:signed    # build + sign + verify the installer (credential env vars: docs/signing.md)
 ```
 

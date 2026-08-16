@@ -89,6 +89,7 @@ npm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
 npm run smoke:hideconsole  # 子进程 windowsHide 补丁冒烟（Windows）
 npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
 npm run dist           # 构建 NSIS 安装器
+npm run verify:bundle  # 打包产物自检：依赖闭包 + 隔离路径真实启动（发布前必跑）
 npm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/signing.md）
 ```
 
