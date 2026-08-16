@@ -8,7 +8,6 @@
 
 安装后双击即用，不需要 Node.js、pnpm 或终端。
 
-<!-- TODO: 替换为主窗口真实截图 -->
 ![DSH Desktop 主窗口](docs/images/screenshot-main.png)
 
 [![CI](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml)

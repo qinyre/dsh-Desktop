@@ -8,7 +8,6 @@
 
 Install and run. No Node.js, pnpm, or terminal required.
 
-<!-- TODO: replace with a real screenshot of the main window -->
 ![DSH Desktop main window](docs/images/screenshot-main.png)
 
 [![CI](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml)
