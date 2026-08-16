@@ -3,12 +3,16 @@ import { autoUpdater } from 'electron-updater'
 import { backupDshHome } from './backup-home'
 
 /** 自动更新（设计书 §8）：自动下载、安装前询问；应用更新前备份 DSH_HOME。 */
+
+/** feed 形态：URL（generic provider，本地/测试）或 GitHub Releases（默认）。 */
+export type Feed = string | { provider: 'github'; owner: string; repo: string }
+
 export class UpdaterController {
-  constructor(private readonly opts: { feedUrl?: string; dshHome: string; backupRoot: string }) {}
+  constructor(private readonly opts: { feed?: Feed; dshHome: string; backupRoot: string }) {}
 
   start(): void {
-    if (this.opts.feedUrl === undefined || this.opts.feedUrl === '') return // dev：无 feed，静默跳过
-    autoUpdater.setFeedURL(this.opts.feedUrl)
+    if (this.opts.feed === undefined || this.opts.feed === '') return // 显式置空：禁用更新检查
+    autoUpdater.setFeedURL(this.opts.feed)
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = false // 设计书 §8"安装前询问"：安装只能由用户点"立即安装"触发，选"稍后"后退出不得静默安装
     autoUpdater.on('update-downloaded', async (info) => {

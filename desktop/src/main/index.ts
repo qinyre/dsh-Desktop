@@ -119,10 +119,11 @@ if (!gotLock) {
     eventTap.attach(sidecar)
     app.on('before-quit', () => eventTap.close())
 
-    // 自动更新（设计书 §8）：仅打包启用；无 feedUrl（dev/未配置）时 start() 静默跳过。
+    // 自动更新（设计书 §8）：默认检查本仓库的 GitHub Releases（v0.1.0 起资产带 latest.yml），
+    // DSH_DESKTOP_FEED_URL 可覆盖为任意 generic feed（本地测试/未来迁移）；仅打包启用。
     if (app.isPackaged) {
       new UpdaterController({
-        feedUrl: process.env.DSH_DESKTOP_FEED_URL, // GitHub Releases 泛化地址；发布时写入实际 repo
+        feed: process.env.DSH_DESKTOP_FEED_URL ?? { provider: 'github', owner: 'qinyre', repo: 'dsh-Desktop' },
         dshHome: paths.dshHome ?? '',
         backupRoot: join(paths.userDataDir, 'backups'),
       }).start()

@@ -109,7 +109,7 @@ desktop/
 
 ## Roadmap
 
-- [ ] First public release (update feed)
+- [x] First public release + update feed (v0.1.0 shipped; startup checks GitHub Releases, asks before installing with a backup)
 - [ ] macOS and Linux builds
 - [ ] Route B: `file://` + IPC bridge (drops the local HTTP surface entirely)
 
