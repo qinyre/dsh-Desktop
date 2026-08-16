@@ -10,6 +10,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "check:electron": "electron scripts/check-node.mjs",
     "smoke:sidecar": "vitest run -t \"sidecar smoke\"",
     "smoke:market": "vitest run -t \"market seed smoke\"",

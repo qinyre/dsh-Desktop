@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-// @ts-expect-error 纯 ESM 脚本，无类型声明（仓库不跑 tsc，vitest 由 esbuild 转译）
 import { resolveSigning, signedConfig } from '../../../scripts/signed-config.mjs'
 
 const storeEnv = { DSH_CSC_SUBJECT: 'CN=Some Dev' }

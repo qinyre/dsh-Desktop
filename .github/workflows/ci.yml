@@ -28,6 +28,6 @@ jobs:
       - name: Picker patch smoke
         run: npm run smoke:picker
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
       - name: Unit tests
         run: npm test
