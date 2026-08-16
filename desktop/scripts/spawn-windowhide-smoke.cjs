@@ -16,11 +16,17 @@ const fail = (message) => {
   process.exit(1)
 }
 
-// 1) 补丁存在性：三处 spawn 位点都必须带 windowsHide（升级后位点漂移在此报错）。
+// 1) 补丁存在性：各 spawn 位点都必须带窗口隐藏（升级后位点漂移在此报错）。
 const sites = [
   ['@deepseek-ai/dsh-subprocess-local/lib/index.js', 'windowsHide: true,\n\t\tdetached: platform !== "win32"', '工具 spawn'],
   ['@deepseek-ai/dsh-subprocess-local/lib/index.js', '{ stdio: "ignore", windowsHide: true }', 'taskkill'],
   ['@deepseek-ai/dsh/lib/plugin-9h8shc4d.js', 'windowsHide: true,\n\t\tshell: process.platform === "win32"', 'pnpm 安装'],
+  // ACL 运行器的原生 CreateProcessAsUserW：创建标志保持原样，STARTUPINFO 加
+  // STARTF_USESHOWWINDOW|SW_HIDE 藏掉自动创建的控制台窗口。注：CREATE_NO_WINDOW /
+  // DETACHED_PROCESS 虽也不弹窗，但会让 PowerShell（5.1 与 7 均是）在无控制台下吞掉
+  // 管道输出（cmd 不受影响）——实测矩阵后选 SW_HIDE。两处 spawn 位点都要在。
+  ['@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js', 'dwFlags: 257,', 'ACL 原生 spawn SW_HIDE（管道版）'],
+  ['@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js', 'wShowWindow: 0,', 'ACL 原生 spawn SW_HIDE（inherit 版）'],
 ]
 for (const [file, needle, label] of sites) {
   const raw = readFileSync(path.join(root, 'node_modules', file), 'utf8')

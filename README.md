@@ -97,7 +97,7 @@ dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_
 
 **目录选择器（koffi）**：dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会触发致命错误（`Error::New napi_get_last_error_info`，普通 Node 不受影响），打包版选择工作区文件夹后会报 "win32 folder dialog worker exited before reporting a result"。补丁将读取改为逐单元的 `koffi.decode()`；`npm run smoke:picker` 会在真实 `ELECTRON_RUN_AS_NODE` 子进程中验证。
 
-**子进程黑窗（windowsHide）**：dsh 的子进程执行——agent 工具的 spawn、进程树终止的 taskkill、插件安装的 pnpm 调用——都没设 `windowsHide: true`。在终端里跑 dsh 时子进程继承当前控制台无感；但 DSH Desktop 是 GUI 进程，没有控制台可继承，每次工具调用都会给用户弹出一个黑色终端窗口。补丁为三处补上 `windowsHide: true`（CREATE_NO_WINDOW）；`npm run smoke:hideconsole` 在真实 `ELECTRON_RUN_AS_NODE` 子进程里经 dsh 公开的 subprocess API 跑 powershell 并验证终止路径。
+**子进程黑窗（windowsHide / SW_HIDE）**：修复分两层。其一，dsh 的子进程执行——agent 工具的 spawn、进程树终止的 taskkill、插件安装的 pnpm 调用——都没设 `windowsHide: true`；在终端里跑 dsh 时子进程继承当前控制台无感，但 DSH Desktop 是 GUI 进程没有控制台可继承，每次调用都会弹黑色终端，补丁为三处补上。其二，Windows 沙箱运行器（受限令牌）用原生 `CreateProcessAsUserW` 拉起真正的命令，自动创建的控制台窗口不受 node 选项控制——补丁在 STARTUPINFO 里加 `STARTF_USESHOWWINDOW|SW_HIDE` 藏掉窗口。不用 CREATE_NO_WINDOW/DETACHED_PROCESS 的原因：实测二者会让 PowerShell（5.1 与 7 均是）在无控制台环境下吞掉管道输出（cmd 不受影响）。`npm run smoke:hideconsole` 覆盖两层：断言补丁在位，并在真实 `ELECTRON_RUN_AS_NODE` 子进程里经 dsh 公开的 subprocess API 与真实 ACL 运行器跑 powershell，验证输出收集与终止路径。
 
 ### 目录结构
 
