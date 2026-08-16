@@ -1,0 +1,126 @@
+/* 状态页（设计书 §4）：启动等待 / 失败页。深海渐变呼应鲸鱼吉祥物与 dsh 品牌蓝。 */
+
+:root {
+  --accent: #4d6bfe;
+  --text: #e8eef6;
+  --text-dim: #93a7bd;
+  --fail: #ff9d8a;
+}
+
+html, body { height: 100% }
+
+body {
+  margin: 0;
+  font-family: system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #16385a 0%, rgba(22, 56, 90, 0) 55%),
+    linear-gradient(180deg, #0c1e30 0%, #081524 60%, #060f1b 100%);
+  color: var(--text);
+}
+
+#stage {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* 鲸鱼 + 下方光晕（水波）：同一节奏一浮一沉 */
+#whale {
+  position: relative;
+  z-index: 1;
+  width: 88px;
+  height: 88px;
+  filter: drop-shadow(0 14px 28px rgba(77, 107, 254, 0.35));
+  animation: float 3.6s ease-in-out infinite;
+}
+
+#ripple {
+  margin-top: -14px;
+  width: 128px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(77, 107, 254, 0.45) 0%, rgba(77, 107, 254, 0) 70%);
+  animation: breathe 3.6s ease-in-out infinite;
+}
+
+#title {
+  margin: 18px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* 省略号三点渐次点亮 */
+.dots { margin-left: 2px }
+.dots i {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+  animation: dot 1.4s ease-in-out infinite;
+}
+.dots i:nth-child(2) { animation-delay: 0.2s }
+.dots i:nth-child(3) { animation-delay: 0.4s }
+
+#detail {
+  margin: 10px 0 0;
+  max-width: 480px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-line;
+}
+
+.actions { margin-top: 26px; display: flex; gap: 12px }
+
+.actions button {
+  padding: 8px 22px;
+  font: inherit;
+  font-size: 13px;
+  color: #cfdcec;
+  background: transparent;
+  border: 1px solid rgba(147, 167, 189, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.actions button:hover {
+  color: #fff;
+  border-color: var(--accent);
+  background: rgba(77, 107, 254, 0.12);
+}
+.actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 失败态：鲸鱼沉底变暗，标题转暖红 */
+#stage.failed #whale { opacity: 0.45; filter: grayscale(0.5); animation: none }
+#stage.failed #ripple { animation: none; opacity: 0.3 }
+#stage.failed #title { color: var(--fail) }
+#stage.failed .dots { display: none }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) }
+  50% { transform: translateY(-7px) }
+}
+@keyframes breathe {
+  0%, 100% { transform: scaleX(1); opacity: 0.55 }
+  50% { transform: scaleX(0.82); opacity: 0.9 }
+}
+@keyframes dot {
+  0%, 100% { opacity: 0.25 }
+  40% { opacity: 1 }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #whale, #ripple, .dots i { animation: none }
+}

@@ -1,12 +1,22 @@
 <!doctype html>
-<html>
-  <head><meta charset="utf-8" /><title>DSH Desktop</title></head>
-  <body style="font-family: system-ui; display: grid; place-items: center; height: 100vh">
-    <p id="msg">starting…</p>
-    <div>
-      <button id="retry" style="display:none">重试</button>
-      <button id="logs">打开日志</button>
-    </div>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>DSH Desktop</title>
+    <!-- 首帧底色与 ui.css 渐变同源，消灭白闪 -->
+    <style>html, body { margin: 0; height: 100%; background: #0a1826 }</style>
+  </head>
+  <body>
+    <main id="stage">
+      <img id="whale" alt="" />
+      <span id="ripple" aria-hidden="true"></span>
+      <h1 id="title">正在启动 dsh<span class="dots"><i></i><i></i><i></i></span></h1>
+      <p id="detail">首次启动需要准备运行时，可能要等一会儿</p>
+      <div class="actions">
+        <button id="retry" hidden>重试</button>
+        <button id="logs">打开日志</button>
+      </div>
+    </main>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
