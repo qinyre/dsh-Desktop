@@ -42,6 +42,8 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 
 环境要求：Windows 10/11 x64。
 
+> 安装器未做代码签名（个人可办的证书最低约 €105/年，暂不购买），首次运行可能被 Windows SmartScreen 拦下——点「更多信息」→「仍要运行」即可。想给自己的构建签名见 [docs/signing.md](docs/signing.md)。
+
 ### 首次运行
 
 应用启动后会打开 dsh Web UI，引导流程与浏览器版一致：在 **Settings → Models** 里配置 API key，选择工作区目录即可。
@@ -110,9 +112,7 @@ desktop/
 
 ## 路线图
 
-- [x] 应用图标
-- [ ] 签名安装器（构建入口已就绪，证书渠道见 [docs/signing.md](docs/signing.md)）
-- [ ] 更新源
+- [ ] 首个公开发布（更新源）
 - [ ] macOS 与 Linux 构建
 - [ ] 路线 B：`file://` + IPC 桥接（彻底去掉本地 HTTP 面）
 

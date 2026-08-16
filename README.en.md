@@ -42,6 +42,8 @@ Download the latest `DSH Desktop Setup x.x.x.exe` from the [Releases](https://gi
 
 Requirements: Windows 10/11 x64.
 
+> The installer is not code-signed (the cheapest certificate an individual can buy is around €105/year — skipped for now), so Windows SmartScreen may block the first run; choose "More info" → "Run anyway". To sign your own builds, see [docs/signing.md](docs/signing.md).
+
 ### First run
 
 The app starts the sidecar and opens the dsh Web UI. Onboarding is identical to the browser version: set your API key in **Settings → Models** and choose a workspace directory.
@@ -110,9 +112,7 @@ desktop/
 
 ## Roadmap
 
-- [x] App icon
-- [ ] Signed installer (build entry ready; certificate options: [docs/signing.md](docs/signing.md))
-- [ ] Update feed
+- [ ] First public release (update feed)
 - [ ] macOS and Linux builds
 - [ ] Route B: `file://` + IPC bridge (drops the local HTTP surface entirely)
 
