@@ -86,6 +86,7 @@ DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # 干净 PATH 市场预装冒�
 npm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
 npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
 npm run dist           # 构建 NSIS 安装器
+npm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/signing.md）
 ```
 
 dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_REPO` 覆盖）；`DESKTOP_DSH_MODE=npm` 切换到捆绑的 npm 包。冒烟在前置条件缺失时自动跳过。
@@ -101,15 +102,17 @@ desktop/
 ├── src/main/sidecar/     # 进程监督：状态机、运行时解析、日志
 ├── src/main/windows/     # 窗口控制器、导航锁、状态页
 ├── src/main/events/      # EventTap：两条下行 WebSocket → 通知
-├── src/main/plugins/     # 插件管理器 + 运行时 pnpm shim
+├── src/main/plugins/     # dshmarket 预装 + 运行时 pnpm shim
 ├── src/main/tray/        # 托盘
 ├── src/main/updater/     # electron-updater + DSH_HOME 备份
-└── src/renderer/         # 状态页 + 插件对话框（其余全是 dsh 的 Web UI）
+└── src/renderer/         # 状态页（其余全是 dsh 的 Web UI）
 ```
 
 ## 路线图
 
-- [ ] 首个公开发布（图标、签名安装器、更新源）
+- [x] 应用图标
+- [ ] 签名安装器（构建入口已就绪，证书渠道见 [docs/signing.md](docs/signing.md)）
+- [ ] 更新源
 - [ ] macOS 与 Linux 构建
 - [ ] 路线 B：`file://` + IPC 桥接（彻底去掉本地 HTTP 面）
 

@@ -86,6 +86,7 @@ DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # clean-PATH market seed smoke
 npm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
 npm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
 npm run dist           # build the NSIS installer
+npm run dist:signed    # build + sign + verify the installer (credential env vars: docs/signing.md)
 ```
 
 Dev mode resolves the upstream checkout at `../deepseek-harness` (override with `DESKTOP_DSH_REPO`); `DESKTOP_DSH_MODE=npm` switches to the bundled registry package. Smokes self-skip when their prerequisites are absent.
@@ -101,15 +102,17 @@ desktop/
 ├── src/main/sidecar/     # process supervision: state machine, runtime resolver, logs
 ├── src/main/windows/     # window controller, navigation guard, status page
 ├── src/main/events/      # EventTap: two downlink WebSockets → notifications
-├── src/main/plugins/     # plugin manager + runtime pnpm shim
+├── src/main/plugins/     # dshmarket seeding + runtime pnpm shim
 ├── src/main/tray/        # tray controller
 ├── src/main/updater/     # electron-updater + DSH_HOME backup
-└── src/renderer/         # status page + plugin dialog (the rest is dsh's Web UI)
+└── src/renderer/         # status page (the rest is dsh's Web UI)
 ```
 
 ## Roadmap
 
-- [ ] First public release (icon, signed installer, update feed)
+- [x] App icon
+- [ ] Signed installer (build entry ready; certificate options: [docs/signing.md](docs/signing.md))
+- [ ] Update feed
 - [ ] macOS and Linux builds
 - [ ] Route B: `file://` + IPC bridge (drops the local HTTP surface entirely)
 
