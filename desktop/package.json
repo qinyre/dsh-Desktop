@@ -15,7 +15,8 @@
     "smoke:market": "vitest run -t \"market seed smoke\"",
     "smoke:picker": "electron scripts/picker-readutf16-smoke.cjs",
     "dist": "electron-vite build && electron-builder --win nsis",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",
@@ -28,6 +29,8 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "patch-package": "^8.0.1",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
