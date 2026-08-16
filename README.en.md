@@ -83,6 +83,7 @@ npm test               # unit tests
 npm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
 DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # clean-PATH market seed smoke (Windows)
 npm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
+npm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
 npm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
 npm run dist           # build the NSIS installer
 npm run dist:signed    # build + sign + verify the installer (credential env vars: docs/signing.md)
@@ -90,9 +91,13 @@ npm run dist:signed    # build + sign + verify the installer (credential env var
 
 Dev mode resolves the upstream checkout at `../deepseek-harness` (override with `DESKTOP_DSH_REPO`); `DESKTOP_DSH_MODE=npm` switches to the bundled registry package. Smokes self-skip when their prerequisites are absent.
 
-### Known patch
+### Known patches
 
-`patches/` carries one patch-package patch. dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`, applied automatically by the postinstall hook after `npm ci`; `npm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child, and a dsh upgrade that breaks the patch fails loudly at install time instead of silently regressing.
+`patches/` carries two patch-package patches, applied automatically by the postinstall hook after `npm ci`; a dsh upgrade that breaks either fails loudly at install time instead of silently regressing.
+
+**Workspace picker (koffi)**: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`; `npm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child.
+
+**Console windows (windowsHide)**: dsh's subprocess execution — the agent tools' spawn, the process-tree taskkill, and the pnpm call for plugin installs — never set `windowsHide: true`. Under the dsh CLI children inherit the caller's console and nothing shows; DSH Desktop is a GUI process with no console to inherit, so every tool call popped a black terminal window. The patch adds `windowsHide: true` (CREATE_NO_WINDOW) at all three sites; `npm run smoke:hideconsole` runs powershell through dsh's public subprocess API in a real `ELECTRON_RUN_AS_NODE` child and exercises the terminate path.
 
 ### Project layout
 

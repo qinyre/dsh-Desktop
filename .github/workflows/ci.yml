@@ -27,6 +27,8 @@ jobs:
         run: npm run check:electron
       - name: Picker patch smoke
         run: npm run smoke:picker
+      - name: Spawn windowsHide smoke
+        run: npm run smoke:hideconsole
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests

@@ -83,6 +83,7 @@ npm test               # 单元测试
 npm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
 DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # 干净 PATH 市场预装冒烟（Windows）
 npm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
+npm run smoke:hideconsole  # 子进程 windowsHide 补丁冒烟（Windows）
 npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
 npm run dist           # 构建 NSIS 安装器
 npm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/signing.md）
@@ -92,7 +93,11 @@ dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_
 
 ### 已知补丁
 
-`patches/` 里有一个 patch-package 补丁。dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会触发致命错误（`Error::New napi_get_last_error_info`，普通 Node 不受影响），打包版选择工作区文件夹后会报 "win32 folder dialog worker exited before reporting a result"。补丁将读取改为逐单元的 `koffi.decode()`，在 `npm ci` 之后由 postinstall 自动应用；`npm run smoke:picker` 会在真实 `ELECTRON_RUN_AS_NODE` 子进程中验证。升级 dsh 使补丁失配时，patch-package 会在安装阶段报错，不会静默失效。
+`patches/` 里有两个 patch-package 补丁，都由 postinstall 在 `npm ci` 之后自动应用；升级 dsh 使补丁失配时会在安装阶段报错，不会静默失效。
+
+**目录选择器（koffi）**：dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会触发致命错误（`Error::New napi_get_last_error_info`，普通 Node 不受影响），打包版选择工作区文件夹后会报 "win32 folder dialog worker exited before reporting a result"。补丁将读取改为逐单元的 `koffi.decode()`；`npm run smoke:picker` 会在真实 `ELECTRON_RUN_AS_NODE` 子进程中验证。
+
+**子进程黑窗（windowsHide）**：dsh 的子进程执行——agent 工具的 spawn、进程树终止的 taskkill、插件安装的 pnpm 调用——都没设 `windowsHide: true`。在终端里跑 dsh 时子进程继承当前控制台无感；但 DSH Desktop 是 GUI 进程，没有控制台可继承，每次工具调用都会给用户弹出一个黑色终端窗口。补丁为三处补上 `windowsHide: true`（CREATE_NO_WINDOW）；`npm run smoke:hideconsole` 在真实 `ELECTRON_RUN_AS_NODE` 子进程里经 dsh 公开的 subprocess API 跑 powershell 并验证终止路径。
 
 ### 目录结构
 

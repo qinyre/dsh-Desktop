@@ -1,0 +1,21 @@
+diff --git a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
+index 75fae74..17abf55 100644
+--- a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
+@@ -497,7 +497,7 @@ function taskkillProcessTree(pid) {
+ 		String(pid),
+ 		"/T",
+ 		"/F"
+-	], { stdio: "ignore" });
++	], { stdio: "ignore", windowsHide: true });
+ }
+ /**
+ * Signal a detached process tree with platform-correct semantics: POSIX
+@@ -553,6 +553,7 @@ function spawnSubprocess(spec, internals = {}) {
+ 			outMode === "inherit" ? "inherit" : "pipe",
+ 			errMode === "inherit" ? "inherit" : "pipe"
+ 		],
++		windowsHide: true,
+ 		detached: platform !== "win32"
+ 	});
+ 	const collectStream = (mode, stream, label) => {
