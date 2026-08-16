@@ -75,14 +75,13 @@ if (!gotLock) {
       logger.appendLine(`[dsh-desktop] pnpm shim unavailable (${String(error)}); plugin installs will need a system pnpm`)
     }
     // 托盘（设计书 §5）：关闭=隐藏到托盘（首次隐藏弹一次气泡），退出走托盘菜单（sidecar 一并结束）。
-    // 插件管理已由 Web UI 内的 dshmarket 接管：入口只聚焦主窗口；「重启服务」承接市场的
-    // 待重启提示（market 自重启已通过配置关闭，重启必须走 sidecar.restart 保持监督）。
+    // 插件管理已由 Web UI 内的 dshmarket 接管（设置页直达，无 URL 路由可深链，故不设托盘入口）；
+    // 「重启服务」承接市场的待重启提示（market 自重启已通过配置关闭，重启必须走 sidecar.restart 保持监督）。
     // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
     const tray = new TrayController({
       iconPath: join(__dirname, '../../resources/icon.png'),
       logDir: paths.logDir,
       onShow: () => { windows?.focus() },
-      onMarket: () => { windows?.focus() },
       onRestart: () => { void sidecar?.restart() },
       onQuit: () => { app.quit() },
     })
