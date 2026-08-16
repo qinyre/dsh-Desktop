@@ -23,8 +23,14 @@ const sites = [
   ['@deepseek-ai/dsh/lib/plugin-9h8shc4d.js', 'windowsHide: true,\n\t\tshell: process.platform === "win32"', 'pnpm 安装'],
 ]
 for (const [file, needle, label] of sites) {
-  const text = readFileSync(path.join(root, 'node_modules', file), 'utf8')
-  if (!text.includes(needle)) fail(`${label} 补丁缺失（${file} 不含 windowsHide 片段）`)
+  const raw = readFileSync(path.join(root, 'node_modules', file), 'utf8')
+  const text = raw.replace(/\r\n/g, '\n')
+  if (!text.includes(needle)) {
+    const at = text.indexOf('windowsHide')
+    console.error(`[hideconsole-smoke] 诊断 ${file}: size=${raw.length} CRLF=${raw.includes('\r\n')} windowsHide@${at}`)
+    if (at >= 0) console.error(`[hideconsole-smoke] 上下文: ${JSON.stringify(text.slice(Math.max(0, at - 60), at + 120))}`)
+    fail(`${label} 补丁缺失（${file} 不含 windowsHide 片段）`)
+  }
   console.log(`[hideconsole-smoke] 补丁在位：${label}`)
 }
 
