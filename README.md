@@ -31,6 +31,8 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 - sidecar 有监督重启（指数退避），进程崩了会自动拉起；dsh 的 append-only 会话日志也保证对话不丢。
 - 窗口隐藏或失焦时，等待中的审批和回合结束会发 Windows 原生通知；窗口可以关闭到托盘，长任务在后台继续。
 - 预装 [dshmarket](https://github.com/dsh-market/dsh-market) 插件市场，在设置页浏览、搜索、一键安装社区插件；机器上不需要有 Node/pnpm。
+- 预装「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）：按包名直接安装任意 dsh 插件，市场没收录的也能装。
+- 原生标题栏跟随 Web UI 的明暗主题变色（Windows 11 上与页面同色，Windows 10 上跟随深浅）。
 - 更新安装前会先询问，并自动备份会话、凭据和设置。
 
 ## 安装
@@ -53,9 +55,9 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 |---|---|
 | 会话内动态挂载 | 在 Web UI 里选 `cordis` agent preset——agent 运行时自己写插件并挂载，无需重启 |
 | 插件清点与配置 | Settings → Plugins，与 Web UI 相同 |
-| 第三方插件包 | 设置页内的插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)） |
+| 第三方插件包 | 设置页内的插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）或「安装」标签页（按 npm spec 直装） |
 
-DSH Desktop 首次启动会把 dshmarket 预装进应用自己的 profile：一个跑在 Web UI 设置页里的可视化插件市场，收录 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 精选目录，支持浏览、搜索、一键安装/卸载和逐插件更新，市场自身也走同一通道升级。纯客户端插件安装后刷新页面即可生效；需要重启的变更会在市场里显示待重启提示，此时从托盘菜单选「重启服务」。
+DSH Desktop 首次启动会把两个插件预装进应用自己的 profile。dshmarket 是跑在 Web UI 设置页里的可视化插件市场，收录 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 精选目录，支持浏览、搜索、一键安装/卸载和逐插件更新，市场自身也走同一通道升级。dsh-plugin-install 则贡献一个「安装」标签页：输入包名（npm spec、`github:user/repo` 或本地路径）就能装任意 dsh 插件，不经过市场。纯客户端插件安装后刷新页面即可生效；需要重启的变更会显示待重启提示，此时从托盘菜单选「重启服务」。
 
 > 安装插件会在本机执行第三方代码（pnpm 生命周期脚本），这一点与 dsh CLI 相同。请只安装来源可信的插件。
 
