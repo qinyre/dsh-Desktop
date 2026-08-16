@@ -2,12 +2,17 @@ import { BrowserWindow, screen, shell } from 'electron'
 import type { Rectangle } from 'electron'
 import type { SidecarState } from '../sidecar/sidecar-manager'
 import { isAllowedNavigation, isSafeExternalUrl } from './navigation-guard'
+import { applyTitleBarColor, parseCssColor } from './titlebar-color'
 import { WindowStateStore } from './window-state-store'
+
+/** 状态页标题栏色：其深海渐变的顶端色调（#0c1e30）。 */
+const STATUS_BAR_COLOR = 'rgb(12, 30, 48)'
 
 /** 主窗口（设计书 §3/§4/§9）：状态页 ↔ dsh 页切换、导航锁、外链转系统浏览器。 */
 export class WindowController {
   private win: BrowserWindow | undefined
   private port: number | undefined
+  private lastBarColor = ''
   private readonly store: WindowStateStore
 
   constructor(private readonly opts: {
@@ -58,6 +63,7 @@ export class WindowController {
       return { action: 'deny' }
     })
     this.showStatus('launching')
+    this.setTitleBarColor(STATUS_BAR_COLOR)
     return this.win
   }
 
@@ -69,6 +75,8 @@ export class WindowController {
 
   showStatus(kind: 'launching' | 'failed', detail?: string): void {
     this.port = kind === 'failed' ? undefined : this.port
+    // 状态页自己接管标题栏配色（dsh 页可能已按其主题改过）。
+    this.setTitleBarColor(STATUS_BAR_COLOR)
     const query = { kind: kind === 'failed' ? 'failed' : 'launching', detail: detail ?? '' }
     // statusPagePath 可为 dev server 的 http URL（electron-vite dev）或打包产物文件路径：
     // 前者 loadURL + searchParams，后者 loadFile + query 选项。
@@ -87,5 +95,17 @@ export class WindowController {
     if (win.isMinimized()) win.restore()
     win.show()
     win.focus()
+  }
+
+  /**
+   * 标题栏跟随主题上色（Windows DWM；其余平台/失败静默保持系统默认）。
+   * dsh 页加载后由 preload 上报页面实际背景色（见 preload 的 titlebar reporter），
+   * 状态页固定用 STATUS_BAR_COLOR。
+   */
+  setTitleBarColor(css: string): void {
+    const rgb = parseCssColor(css)
+    if (rgb === null || css === this.lastBarColor || this.win === undefined) return
+    this.lastBarColor = css
+    applyTitleBarColor(this.win, rgb)
   }
 }

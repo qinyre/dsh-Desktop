@@ -91,6 +91,10 @@ if (!gotLock) {
     // Web UI 内插件（dsh-plugin-install 的「重启服务」按钮）请求重启：sidecar 受
     // 应用监督，重启必须经壳层（SidecarManager.restart），插件侧自重启会脱离监督。
     ipcMain.on('dsh:restart-sidecar', () => { void sidecar?.restart() })
+    // dsh 页 preload 上报的标题栏底色（跟随其明暗主题）。
+    ipcMain.on('dsh:titlebar-color', (_event, css) => {
+      if (typeof css === 'string') windows?.setTitleBarColor(css)
+    })
     // 预装插件市场（仅打包模式：dev 不动用户的真实 DSH_HOME）。经 dsh CLI 安装，首启时
     // profile 尚不存在也成立（CLI 自带初始化 + reconcile）；失败不阻断启动，下次再试。
     if (paths.dshHome !== undefined && !marketSeeded(paths.dshHome)) {
