@@ -42,9 +42,12 @@ export class WindowController {
   createMainWindow(): BrowserWindow {
     this.win = new BrowserWindow({
       ...this.clampToVisibleDisplay(this.store.load()), minWidth: 800, minHeight: 600, show: false,
+      title: 'DSH Desktop',
       webPreferences: { preload: this.opts.preloadPath, contextIsolation: true },
     })
     this.win.once('ready-to-show', () => this.win?.show())
+    // dsh 的 Web UI 会把 document.title 设为 "DeepSeek Harness"：任务栏/标题栏保持本应用名。
+    this.win.on('page-title-updated', (event) => event.preventDefault())
     this.win.on('close', () => { if (this.win !== undefined) this.store.save(this.win.getBounds()) })
     this.win.webContents.on('will-navigate', (event, url) => {
       if (!isAllowedNavigation(url, this.port)) event.preventDefault()
