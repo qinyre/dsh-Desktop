@@ -35,9 +35,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 
 ## Install
 
-Download the latest `DSH Desktop Setup x.x.x.exe` from the [Releases](https://github.com/qinyre/dsh-Desktop/releases) page and run it.
-
-<!-- TODO: add a Releases download badge/link once the first release is published -->
+Download the latest `DSH-Desktop-Setup-x.x.x.exe` from the [Releases](https://github.com/qinyre/dsh-Desktop/releases) page and run it.
 
 Requirements: Windows 10/11 x64.
 

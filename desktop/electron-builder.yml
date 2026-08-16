@@ -18,6 +18,9 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # GitHub 会把资产文件名里的空格替换成点号，latest.yml 的 url 则用连字符——统一用
+  # 无空格名，本地产物、上传资产、更新元数据三者一致。
+  artifactName: DSH-Desktop-Setup-${version}.${ext}
 # latest.yml（更新元数据）的生成需要显式 provider；构建脚本带 --publish never，
 # 只在本地产出 latest.yml/blockmap 不上传——资产随 GitHub Release 手动上传，
 # 运行期更新检查由 DSH_DESKTOP_FEED_URL 显式开启（updater 未设 feed 时静默跳过）。

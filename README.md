@@ -35,9 +35,7 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 
 ## 安装
 
-从 [Releases](https://github.com/qinyre/dsh-Desktop/releases) 下载最新的 `DSH Desktop Setup x.x.x.exe` 并运行。
-
-<!-- TODO: 首个 Release 发布后补下载徽章/直达链接 -->
+从 [Releases](https://github.com/qinyre/dsh-Desktop/releases) 下载最新的 `DSH-Desktop-Setup-x.x.x.exe` 并运行。
 
 环境要求：Windows 10/11 x64。
 
