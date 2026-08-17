@@ -9,10 +9,11 @@ export const DSHMARKET_SPEC = 'dshmarket@1.6.0'
 
 /**
  * 预装的插件安装器版本（qinyre/dsh-plugin-install）：同样只在预装时钉住。
- * 桌面模式下其「重启服务」按钮经 dsh:restart-sidecar IPC 交回壳层（见 index.ts），
- * 无需任何 patch 配置覆盖——与市场不同，它没有脱离监督的自重启路径。
+ * 0.2.0 起该标签页兼做更新器（检查更新/一键升级），并带「重启服务」按钮：
+ * 桌面模式下经 dsh:restart-sidecar IPC 交回壳层（见 index.ts），无需任何
+ * patch 配置覆盖——与市场不同，它没有脱离监督的自重启路径。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.1.1'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.0'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
