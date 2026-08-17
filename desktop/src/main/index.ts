@@ -123,7 +123,7 @@ if (!gotLock) {
         logger.appendLine(`[dsh-desktop] installer seed failed (exit ${code}); retrying next launch`)
       }
     }
-    // 预装能力管理插件（设置页「技能」「MCP」Tab，qinyre/dsh-plugin-capabilities）。
+    // 预装能力管理插件（设置页一级分区「技能与 MCP」，qinyre/dsh-plugin-capabilities）。
     // 同样无需配置覆盖：待重启横幅经 dsh:restart-sidecar IPC 交回壳层。
     if (paths.dshHome !== undefined && !capabilitiesSeeded(paths.dshHome)) {
       logger.appendLine(`[dsh-desktop] seeding capabilities plugin (${CAPABILITIES_SPEC})`)

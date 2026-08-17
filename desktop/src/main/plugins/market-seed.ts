@@ -15,11 +15,12 @@ export const DSHMARKET_SPEC = 'dshmarket@1.6.0'
 export const INSTALLER_SPEC = 'dsh-plugin-install@0.1.1'
 
 /**
- * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页「技能」「MCP」Tab）。
+ * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
+ * 与通用设置/模型同级，内含「技能」「MCP」两个标签页）。
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.1.4'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.1.5'
 
 /** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
 export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
