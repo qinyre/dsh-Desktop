@@ -38,7 +38,7 @@ export function isLightBackground(rgb: [number, number, number]): boolean {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5
 }
 
-type DwmSetter = (hwnd: Buffer, attr: number, value: number) => void
+type DwmSetter = (hwnd: bigint, attr: number, value: number) => number
 
 let setter: DwmSetter | null | undefined
 
@@ -46,6 +46,11 @@ let setter: DwmSetter | null | undefined
  * 惰性加载 dwmapi 的 DwmSetWindowAttribute；任何失败固定返回 null（不再重试）。
  * 经 createRequire 同步 require：主进程产物是 CJS（electron-vite），koffi 是
  * external 的原生模块，动态 import() 在 bundle 转换下的行为不如 require 确定。
+ *
+ * 句柄参数必须是 int64：koffi 对 `void*` 形参传入的 Buffer 会取「指向缓冲区数据
+ * 的指针」而非句柄值，DWM 因此拿到垃圾句柄返回 E_HANDLE——v0.1.4 及之前标题栏
+ * 一直没跟色的根因。value 保持 `void*` + Buffer 是对的：DWM 要的正是指向 DWORD
+ * 载荷的指针。HRESULT 非零时记一次 console.warn，不再无声吞掉。
  */
 function getSetter(): DwmSetter | null {
   if (setter !== undefined) return setter
@@ -55,18 +60,25 @@ function getSetter(): DwmSetter | null {
   }
   try {
     const koffi = createRequire(__filename)('koffi') as {
-      load: (path: string) => { func: (proto: string) => (hwnd: Buffer, attr: number, value: Buffer, size: number) => number }
+      load: (path: string) => { func: (proto: string) => (hwnd: bigint, attr: number, value: Buffer, size: number) => number }
     }
     const dwmapi = koffi.load('dwmapi.dll')
     const DwmSetWindowAttribute = dwmapi.func(
-      'long __stdcall DwmSetWindowAttribute(void *hwnd, unsigned int attr, void *value, unsigned int size)',
+      'long __stdcall DwmSetWindowAttribute(int64 hwnd, unsigned int attr, void *value, unsigned int size)',
     )
+    let warned = false
     setter = (hwnd, attr, value) => {
       const buffer = Buffer.alloc(4)
       buffer.writeUInt32LE(value, 0)
-      DwmSetWindowAttribute(hwnd, attr, buffer, 4)
+      const hr = DwmSetWindowAttribute(hwnd, attr, buffer, 4)
+      if (hr !== 0 && !warned) {
+        warned = true
+        console.warn(`[titlebar] DwmSetWindowAttribute(attr ${attr}) failed: 0x${(hr >>> 0).toString(16)}`)
+      }
+      return hr
     }
-  } catch {
+  } catch (error) {
+    console.warn('[titlebar] dwmapi/koffi unavailable:', error instanceof Error ? error.message : String(error))
     setter = null
   }
   return setter
@@ -76,7 +88,7 @@ function getSetter(): DwmSetter | null {
 export function applyTitleBarColor(win: BrowserWindow, rgb: [number, number, number]): void {
   const set = getSetter()
   if (set === null || win.isDestroyed()) return
-  const hwnd = win.getNativeWindowHandle()
+  const hwnd = win.getNativeWindowHandle().readBigUInt64LE(0)
   const dark = !isLightBackground(rgb)
   try {
     set(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, dark ? 1 : 0)
