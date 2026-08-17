@@ -19,7 +19,7 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.1.1'
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.1.2'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.1.3'
 
 /** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
 export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
