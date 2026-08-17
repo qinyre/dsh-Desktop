@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { app, ipcMain, Menu, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
+import { repairSkinsBrick, skinBrickDetected } from './sidecar/skin-selfheal'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
@@ -139,9 +141,28 @@ if (!gotLock) {
       logger,
     })
     sidecar.on('ready', (port) => { windows?.loadDsh(port) })
+    // 皮肤卸载残留自愈（skin-selfheal.ts 头注释有完整上游事实）：启用中卸载皮肤包
+    // 会留下 managed 块 + 悬空链接，下次启动 loader 导入失败、整树拒绝。特征唯一、
+    // 修复确定，crashed 时同步修完，管理器自带的退避重启（1s 起）拉起的就是干净状态，
+    // 用户只感知一次稍慢的启动。每进程最多自愈一次：修复不生效时不得无限循环。
+    let skinHealed = false
+    const healSkins = (): void => {
+      if (skinHealed || paths.dshHome === undefined) return
+      let logText = ''
+      try { logText = readFileSync(logger.filePath, 'utf8') } catch { return }
+      if (!skinBrickDetected(logText)) return
+      const actions = repairSkinsBrick({ dshHome: paths.dshHome })
+      if (actions.length === 0) return
+      skinHealed = true
+      logger.appendLine(`[dsh-desktop] skin-plugin leftover detected; repair: ${actions.join(' | ')}`)
+      // failed 是终态（重启预算已耗尽），修复后必须显式拉起；crashed 则由管理器
+      // 自带的退避重启接管（1s 起，修复是同步 fs 操作，必然赶在 respawn 前）。
+      if (sidecar?.state === 'failed') void sidecar.restart()
+    }
     sidecar.on('statechange', (state) => {
       if (state === 'spawning' || state === 'crashed') windows?.showStatus('launching')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
+      if (state === 'crashed' || state === 'failed') healSkins()
     })
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
     // 闭包里 windows（let）不可窄化，取 mainWindow 需 ?.；whenReady 只 resolve 一次，
