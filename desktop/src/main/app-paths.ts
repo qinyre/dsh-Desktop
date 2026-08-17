@@ -49,6 +49,13 @@ export function buildSidecarEnv(
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base, ELECTRON_RUN_AS_NODE: '1', DSH_DESKTOP: '1' }
   if (paths.dshHome !== undefined) env.DSH_HOME = paths.dshHome
-  if (opts.shimDir !== undefined) env.PATH = prependPath(env.PATH ?? '', opts.shimDir)
+  if (opts.shimDir !== undefined) {
+    // Windows 环境块键大小写不敏感（PATH 实际多以 Path 落键），普通对象不然：
+    // 写 env.PATH 会另立新键而非改写原键，子进程只认"最后出现"的那个——
+    // 原 PATH 被整个遮蔽，sidecar 全树（MCP 的 cmd/npx、agent 命令）只剩
+    // shimDir 可解析。必须先找到既有键名、在原键上前置。
+    const pathKey = Object.keys(env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH'
+    env[pathKey] = prependPath(env[pathKey] ?? '', opts.shimDir)
+  }
   return env
 }

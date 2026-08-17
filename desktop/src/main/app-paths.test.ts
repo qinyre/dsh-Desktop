@@ -26,4 +26,14 @@ describe('resolveAppPaths / buildSidecarEnv', () => {
     const bare = buildSidecarEnv(paths, { PATH: 'x' })
     expect(bare.PATH).toBe('x')
   })
+  it('prepends onto a Windows-cased Path key without shadowing it', () => {
+    // 回归：真实 Windows 环境的键名是 Path。曾用 env.PATH 赋值，另立的新键
+    // 在子进程侧遮蔽原值，sidecar 只剩 shimDir（cmd/npx 全部失联）。
+    const paths = resolveAppPaths({ packaged: true, env: {}, userDataDir: '/ud', repoRoot: '/repo' })
+    const env = buildSidecarEnv(paths, { Path: 'original' }, { shimDir: '/ud/bin' })
+    const delim = process.platform === 'win32' ? ';' : ':'
+    const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === 'PATH')
+    expect(pathKeys).toEqual(['Path'])
+    expect(env.Path).toBe(`/ud/bin${delim}original`)
+  })
 })
