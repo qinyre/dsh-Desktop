@@ -4,12 +4,13 @@ import { dirname, join } from 'node:path'
 import { app, ipcMain, Menu, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
+import { BundleBrickHealer } from './sidecar/profile-heal'
 import { repairSkinsBrick, skinBrickDetected } from './sidecar/skin-selfheal'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
-import { applyMarketConfig, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedCapabilities, seedDshmarket, seedInstaller } from './plugins/market-seed'
+import { applyMarketConfig, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedBundle, seedCapabilities, seedDshmarket, seedInstaller } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
@@ -159,10 +160,28 @@ if (!gotLock) {
       // 自带的退避重启接管（1s 起，修复是同步 fs 操作，必然赶在 respawn 前）。
       if (sidecar?.state === 'failed') void sidecar.restart()
     }
+    // 断链 profile bundle 自愈（profile-heal.ts 头注释有完整事故事实）：插件更新
+    // 中途被打断会留下「bundles 声明了包、node_modules 目录为空」的状态，启动期
+    // 直接抛错进崩溃循环，插件层无从插手。修复 = 经 seedBundle 路径重跑一次
+    // `dsh plugin add <name>@<钉住版本>`（实测幂等）。修复是异步的（秒级），
+    // 自愈器内部单飞 + 限额；崩溃循环耗尽预算落 failed 后由 onRepaired 显式拉起。
+    const bundleHealer = paths.dshHome === undefined ? undefined : new BundleBrickHealer({
+      readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return null } },
+      readManifest: () => { try { return readFileSync(join(paths.dshHome!, 'profiles', 'web', 'package.json'), 'utf8') } catch { return null } },
+      repair: (_name, spec) => seedBundle({
+        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+        env: sidecarEnv, spec, onOutput: (line) => { logger.appendLine(line) },
+      }),
+      log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
+      onRepaired: () => { if (sidecar?.state === 'failed') void sidecar.restart() },
+    })
     sidecar.on('statechange', (state) => {
       if (state === 'spawning' || state === 'crashed') windows?.showStatus('launching')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
-      if (state === 'crashed' || state === 'failed') healSkins()
+      if (state === 'crashed' || state === 'failed') {
+        healSkins()
+        bundleHealer?.consider()
+      }
     })
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
     // 闭包里 windows（let）不可窄化，取 mainWindow 需 ?.；whenReady 只 resolve 一次，
