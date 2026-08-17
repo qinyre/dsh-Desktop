@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { resolveRuntime, type RuntimeMode } from '../sidecar/runtime-resolver'
 
 /** 预装的市场版本：只在预装时钉住，市场自身可在设置页走更新通道升级。 */
-export const DSHMARKET_SPEC = 'dshmarket@1.6.0'
+export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
 
 /**
  * 预装的插件安装器版本（qinyre/dsh-plugin-install）：同样只在预装时钉住。
