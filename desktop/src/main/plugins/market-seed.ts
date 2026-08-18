@@ -12,8 +12,10 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 0.2.0 起该标签页兼做更新器（检查更新/一键升级），并带「重启服务」按钮：
  * 桌面模式下经 dsh:restart-sidecar IPC 交回壳层（见 index.ts），无需任何
  * patch 配置覆盖——与市场不同，它没有脱离监督的自重启路径。
+ * 0.2.1 起：安装/更新/卸载失败一律以 200 携带结果体返回并由页面渲染
+ * 红色横幅（此前命令失败会被当成 HTTP 错误抛掉，页面毫无反馈）。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.0'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.1'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
