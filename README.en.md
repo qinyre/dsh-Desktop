@@ -14,7 +14,7 @@ Install and run. No Node.js, pnpm, or terminal required.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.0--rc.6-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.0--rc.7-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
 
@@ -33,6 +33,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The [dshmarket](https://github.com/dsh-market/dsh-market) plugin market is preinstalled: browse, search, and install community plugins from the in-app settings page — no Node/pnpm needed on the machine.
 - An "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)) is preinstalled too: install any dsh plugin by package name, including ones the market doesn't list; installed plugins get update checks and one-click upgrades on the same page, which also has the restart-service button.
 - A "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)) is preinstalled as well: manage the skill catalog and MCP servers there, import config from Claude Code or Codex, toggle any skill on or off, add local folders or GitHub repos as skill sources, install from the curated skill and MCP markets, and start from two bundled starter skills, skill-creator and find-skills.
+- Session archiving and a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) come preinstalled too: open the archive drawer from the sidebar footer to browse, preview, and restore archived sessions, with optional auto-archive rules; the tick rail along the conversation's left edge maps every turn to a dash — preview on hover, click to jump, Alt+↑/↓ to step.
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
@@ -58,7 +59,7 @@ DSH Desktop keeps all three of dsh's plugin capability layers:
 | Plugin inventory & config | Settings → Plugins, as in the Web UI |
 | Third-party plugin packages | The plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)) or the "Install" tab (direct install by npm spec), both inside the settings page |
 
-On first launch DSH Desktop preinstalls three plugins into the app's own profile. dshmarket is a visual plugin market living in the Web UI's settings page, covering the curated [awesome-dsh-plugin](https://awesome-dsh-plugin.com) directory: browse, search, one-click install/uninstall, and per-plugin updates — the market updates itself through the same channel. dsh-plugin-install contributes an "Install" tab: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly, no market round-trip. The installed list doubles as an updater: npm installs are compared against the registry's latest version and github installs against new upstream commits, each plugin upgrades in place, and the tab's restart-service button hands the restart to the app shell. dsh-plugin-capabilities adds a "Skills & MCP" section to the settings page, level with Models and Plugins: create, edit, and delete skills in the catalog; manage MCP servers (stdio commands or http URLs) the same way; pull in skills plus MCP config from Claude Code or Codex — whichever of those agents exists on the machine shows up as a source; every skill can be toggled on or off individually, local folders or GitHub repos can be registered as extra skill sources, and the section's own skill and MCP markets install curated entries with one click; and the catalog ships with two read-only starter skills, skill-creator and find-skills. Client-only plugins activate after a page refresh; changes that need a restart show a pending notice, and the restart itself is done from the tray menu's「重启服务」(restart service) or from the Install tab.
+On first launch DSH Desktop preinstalls four plugins into the app's own profile. dshmarket is a visual plugin market living in the Web UI's settings page, covering the curated [awesome-dsh-plugin](https://awesome-dsh-plugin.com) directory: browse, search, one-click install/uninstall, and per-plugin updates — the market updates itself through the same channel. dsh-plugin-install contributes an "Install" tab: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly, no market round-trip. The installed list doubles as an updater: npm installs are compared against the registry's latest version and github installs against new upstream commits, each plugin upgrades in place, and the tab's restart-service button hands the restart to the app shell. dsh-plugin-capabilities adds a "Skills & MCP" section to the settings page, level with Models and Plugins: create, edit, and delete skills in the catalog; manage MCP servers (stdio commands or http URLs) the same way; pull in skills plus MCP config from Claude Code or Codex — whichever of those agents exists on the machine shows up as a source; every skill can be toggled on or off individually, local folders or GitHub repos can be registered as extra skill sources, and the section's own skill and MCP markets install curated entries with one click; and the catalog ships with two read-only starter skills, skill-creator and find-skills. dsh-plugin-atlas adds an archived-sessions drawer to the sidebar footer — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump. Client-only plugins activate after a page refresh; changes that need a restart show a pending notice, and the restart itself is done from the tray menu's「重启服务」(restart service) or from the Install tab.
 
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 
@@ -110,7 +111,7 @@ desktop/
 ├── src/main/sidecar/     # process supervision: state machine, runtime resolver, logs
 ├── src/main/windows/     # window controller, navigation guard, status page
 ├── src/main/events/      # EventTap: two downlink WebSockets → notifications
-├── src/main/plugins/     # dshmarket seeding + runtime pnpm shim
+├── src/main/plugins/     # plugin seeding (market, install, capabilities, atlas) + runtime pnpm shim
 ├── src/main/tray/        # tray controller
 ├── src/main/updater/     # electron-updater + DSH_HOME backup
 └── src/renderer/         # status page (the rest is dsh's Web UI)
