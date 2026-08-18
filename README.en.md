@@ -30,10 +30,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The Web UI runs unmodified: workspaces, sessions, approvals, models, skills, and terminals all work inside the app window, because DSH Desktop is just the shell around `dsh web`.
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
 - Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
-- The [dshmarket](https://github.com/dsh-market/dsh-market) plugin market is preinstalled: browse, search, and install community plugins from the in-app settings page — no Node/pnpm needed on the machine.
-- An "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)) is preinstalled too: install any dsh plugin by package name, including ones the market doesn't list; installed plugins get update checks and one-click upgrades on the same page, which also has the restart-service button.
-- A "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)) is preinstalled as well: manage the skill catalog and MCP servers there, import config from Claude Code or Codex, toggle any skill on or off, add local folders or GitHub repos as skill sources, install from the curated skill and MCP markets, and start from two bundled starter skills, skill-creator and find-skills.
-- Session archiving and a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) come preinstalled too: open the archive drawer from the sidebar footer to browse, preview, and restore archived sessions, with optional auto-archive rules; the tick rail along the conversation's left edge maps every turn to a dash — preview on hover, click to jump, Alt+↑/↓ to step.
+- Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
@@ -59,7 +56,23 @@ DSH Desktop keeps all three of dsh's plugin capability layers:
 | Plugin inventory & config | Settings → Plugins, as in the Web UI |
 | Third-party plugin packages | The plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)) or the "Install" tab (direct install by npm spec), both inside the settings page |
 
-On first launch DSH Desktop preinstalls four plugins into the app's own profile. dshmarket is a visual plugin market living in the Web UI's settings page, covering the curated [awesome-dsh-plugin](https://awesome-dsh-plugin.com) directory: browse, search, one-click install/uninstall, and per-plugin updates — the market updates itself through the same channel. dsh-plugin-install contributes an "Install" tab: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly, no market round-trip. The installed list doubles as an updater: npm installs are compared against the registry's latest version and github installs against new upstream commits, each plugin upgrades in place, and the tab's restart-service button hands the restart to the app shell. dsh-plugin-capabilities adds a "Skills & MCP" section to the settings page, level with Models and Plugins: create, edit, and delete skills in the catalog; manage MCP servers (stdio commands or http URLs) the same way; pull in skills plus MCP config from Claude Code or Codex — whichever of those agents exists on the machine shows up as a source; every skill can be toggled on or off individually, local folders or GitHub repos can be registered as extra skill sources, and the section's own skill and MCP markets install curated entries with one click; and the catalog ships with two read-only starter skills, skill-creator and find-skills. dsh-plugin-atlas adds an archived-sessions drawer to the sidebar footer — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump. Client-only plugins activate after a page refresh; changes that need a restart show a pending notice, and the restart itself is done from the tray menu's「重启服务」(restart service) or from the Install tab.
+On first launch DSH Desktop preinstalls the four plugins below into the app's own profile. Client-only plugins activate after a page refresh; changes that need a restart show a pending notice — restart from the tray menu or the "Install" tab.
+
+### Plugin market · [dshmarket](https://github.com/dsh-market/dsh-market)
+
+A visual market inside the Web UI's settings page, covering the curated [awesome-dsh-plugin](https://awesome-dsh-plugin.com) directory: browse, search, one-click install/uninstall, and per-plugin updates all happen on the page, and the market updates itself through the same channel.
+
+### Install anything · [dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)
+
+Contributes an "Install" tab that skips the market: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly. The installed list doubles as an updater — npm installs compare against the registry's latest version, github installs against new upstream commits — with in-place upgrades; the tab's restart-service button hands the restart to the app shell.
+
+### Skills & MCP · [dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)
+
+Adds a "Skills & MCP" section to the settings page, level with Models and Plugins: create, edit, and delete skills in the catalog; manage MCP servers (stdio commands or http URLs) the same way; pull in skills plus MCP config from Claude Code or Codex — whichever of those agents exists on the machine shows up as a source. Every skill can be toggled on or off individually, local folders or GitHub repos can be registered as extra skill sources, and the section's own skill and MCP markets install curated entries with one click. The catalog ships with two read-only starter skills, skill-creator and find-skills.
+
+### Archive & tick rail · [dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)
+
+An archived-sessions drawer at the sidebar footer — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump.
 
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 

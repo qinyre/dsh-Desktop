@@ -30,10 +30,7 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 - Web UI 原封不动：`dsh web` 的工作区、会话、审批、模型、技能、终端都在应用窗口里，DSH Desktop 只是外面那层壳。
 - sidecar 有监督重启（指数退避），进程崩了会自动拉起；dsh 的 append-only 会话日志也保证对话不丢。
 - 窗口隐藏或失焦时，等待中的审批和回合结束会发 Windows 原生通知；窗口可以关闭到托盘，长任务在后台继续。
-- 预装 [dshmarket](https://github.com/dsh-market/dsh-market) 插件市场，在设置页浏览、搜索、一键安装社区插件；机器上不需要有 Node/pnpm。
-- 预装「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）：按包名直接安装任意 dsh 插件，市场没收录的也能装；已装的插件在同一页检查更新、一键升级，重启服务也从这里。
-- 预装「技能与 MCP」设置分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）：技能目录与 MCP 服务器都在设置页管理，可从 Claude Code、Codex 导入配置；技能可逐个开关加载，本地目录或 GitHub 仓库都能注册为技能来源，分区里另有技能与 MCP 两个精选市场可一键安装；开箱自带 skill-creator、find-skills 两个起步技能。
-- 预装「已归档会话」管理和对话刻度尺（[dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)）：侧边栏底部打开归档面板，浏览、预览、一键恢复归档的会话，还可以配置自动归档规则；对话区左缘的刻度尺每格对应一次发言，悬停预览、点击跳转、Alt+↑/↓ 逐条移动。
+- 首次启动预装四个插件：可视化插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）、任意包名直装的「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）、「技能与 MCP」管理分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）、归档管理与对话刻度尺（[dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)），详见[插件](#插件)。
 - 原生标题栏跟随 Web UI 的明暗主题变色（Windows 11 上与页面同色，Windows 10 上跟随深浅）。
 - 更新安装前会先询问，并自动备份会话、凭据和设置。
 
@@ -59,7 +56,23 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 | 插件清点与配置 | Settings → Plugins，与 Web UI 相同 |
 | 第三方插件包 | 设置页内的插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）或「安装」标签页（按 npm spec 直装） |
 
-DSH Desktop 首次启动会把四个插件预装进应用自己的 profile。dshmarket 是跑在 Web UI 设置页里的可视化插件市场，收录 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 精选目录，支持浏览、搜索、一键安装/卸载和逐插件更新，市场自身也走同一通道升级。dsh-plugin-install 则贡献一个「安装」标签页：输入包名（npm spec、`github:user/repo` 或本地路径）就能装任意 dsh 插件，不经过市场；已装列表还能逐个检查更新——npm 安装的对照 registry 最新版、github 安装的对照仓库新提交——就地升级，页面上的「重启服务」按钮直接交由应用壳层执行。dsh-plugin-capabilities 在设置页加了一个与「模型」「插件」平级的「技能与 MCP」分区：技能目录在此新建、编辑、删除，MCP 服务器（stdio 命令或 http URL）同样页面化管理，Claude Code 和 Codex 已有的技能与 MCP 配置可以直接导入——机器上装过哪个 agent 就多出哪份来源；每个技能可以单独开关是否加载，本地目录或 GitHub 仓库都能注册成额外的技能来源，分区里另有技能与 MCP 两个精选市场，一键安装、一键卸载；技能目录开箱还带着 skill-creator 和 find-skills 两个只读的起步技能。dsh-plugin-atlas 在侧边栏底部加了一个「已归档会话」面板——归档的会话在这里浏览、预览、一键恢复，自动归档规则可选配；对话区左缘同时多了一把刻度尺，每格对应一次发言，悬停预览、点击跳转。纯客户端插件安装后刷新页面即可生效；需要重启的变更会显示待重启提示，此时从托盘菜单或「安装」标签页选「重启服务」。
+首次启动时，DSH Desktop 会把下面四个插件预装进应用自己的 profile。纯客户端插件安装后刷新页面即可生效；需要重启的变更会显示待重启提示，此时从托盘菜单或「安装」标签页选「重启服务」。
+
+### 插件市场 · [dshmarket](https://github.com/dsh-market/dsh-market)
+
+跑在 Web UI 设置页里的可视化市场，收录 [awesome-dsh-plugin](https://awesome-dsh-plugin.com) 精选目录，浏览、搜索、一键安装/卸载和逐插件更新都在页面上完成，市场自身也走同一通道升级。
+
+### 任意插件直装 · [dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)
+
+贡献一个「安装」标签页，不走市场：输入包名（npm spec、`github:user/repo` 或本地路径）就能装任意 dsh 插件。已装列表还能逐个检查更新——npm 安装的对照 registry 最新版，github 安装的对照仓库新提交——就地升级；页面上的「重启服务」按钮直接交由应用壳层执行。
+
+### 技能与 MCP · [dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)
+
+在设置页加一个与「模型」「插件」平级的「技能与 MCP」分区：技能目录在此新建、编辑、删除，MCP 服务器（stdio 命令或 http URL）同样页面化管理；Claude Code 和 Codex 已有的技能与 MCP 配置可以直接导入，机器上装过哪个 agent 就多出哪份来源。每个技能可以单独开关是否加载，本地目录或 GitHub 仓库都能注册成额外的技能来源；分区里另有技能与 MCP 两个精选市场，一键安装、一键卸载。技能目录开箱自带 skill-creator 和 find-skills 两个只读的起步技能。
+
+### 归档与刻度尺 · [dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)
+
+在侧边栏底部加「已归档会话」面板——归档的会话在这里浏览、预览、一键恢复，自动归档规则可选配；对话区左缘同时多了一把刻度尺，每格对应一次发言，悬停预览、点击跳转。
 
 > 安装插件会在本机执行第三方代码（pnpm 生命周期脚本），这一点与 dsh CLI 相同。请只安装来源可信的插件。
 
