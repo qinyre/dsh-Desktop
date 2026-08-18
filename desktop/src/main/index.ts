@@ -10,7 +10,7 @@ import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
-import { applyMarketConfig, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedBundle, seedCapabilities, seedDshmarket, seedInstaller } from './plugins/market-seed'
+import { applyMarketConfig, atlasSeeded, ATLAS_SPEC, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedAtlas, seedBundle, seedCapabilities, seedDshmarket, seedInstaller } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
@@ -134,6 +134,18 @@ if (!gotLock) {
       })
       if (code !== 0) {
         logger.appendLine(`[dsh-desktop] capabilities seed failed (exit ${code}); retrying next launch`)
+      }
+    }
+    // 预装归档与刻度尺插件（qinyre/dsh-plugin-atlas，「已归档会话」面板 + 对话刻度尺）。
+    // 纯路由与 UI 扩展，无重启路径，无需配置覆盖。
+    if (paths.dshHome !== undefined && !atlasSeeded(paths.dshHome)) {
+      logger.appendLine(`[dsh-desktop] seeding atlas plugin (${ATLAS_SPEC})`)
+      const code = await seedAtlas({
+        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
+      })
+      if (code !== 0) {
+        logger.appendLine(`[dsh-desktop] atlas seed failed (exit ${code}); retrying next launch`)
       }
     }
     sidecar = new SidecarManager({

@@ -22,7 +22,14 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.0'
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.2.0'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.2.1'
+
+/**
+ * 预装的归档与刻度尺插件版本（qinyre/dsh-plugin-atlas，侧边栏底部「已归档会话」
+ * 管理面板 + 对话区左缘的鱼眼刻度尺）。纯 HTTP 路由与 UI 扩展，无重启、无自更新
+ * 路径，无需任何 patch 配置覆盖。同样只在预装时钉住。
+ */
+export const ATLAS_SPEC = 'dsh-plugin-atlas@0.1.0'
 
 /** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
 export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
@@ -51,6 +58,11 @@ export function installerSeeded(dshHome: string | undefined): boolean {
 /** profile 是否已装能力管理插件（技能/MCP）。 */
 export function capabilitiesSeeded(dshHome: string | undefined): boolean {
   return bundleSeeded(dshHome, 'dsh-plugin-capabilities')
+}
+
+/** profile 是否已装归档与刻度尺插件。 */
+export function atlasSeeded(dshHome: string | undefined): boolean {
+  return bundleSeeded(dshHome, 'dsh-plugin-atlas')
 }
 
 /**
@@ -119,6 +131,19 @@ export async function seedCapabilities(opts: {
   onOutput?: (line: string) => void
 }): Promise<number> {
   return seedBundle({ ...opts, spec: opts.spec ?? CAPABILITIES_SPEC })
+}
+
+/** 预装归档与刻度尺插件（dsh-plugin-atlas，「已归档会话」面板 + 对话刻度尺）。 */
+export async function seedAtlas(opts: {
+  mode: RuntimeMode
+  execPath: string
+  repoRoot: string
+  env: NodeJS.ProcessEnv
+  resolve?: (id: string) => string
+  spec?: string
+  onOutput?: (line: string) => void
+}): Promise<number> {
+  return seedBundle({ ...opts, spec: opts.spec ?? ATLAS_SPEC })
 }
 
 /** 市场行 id（其自带 cordis.patch.yml 的 insert id），配置覆盖以此为目标。 */
