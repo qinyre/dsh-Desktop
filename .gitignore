@@ -25,3 +25,4 @@ out/
 /dsh-plugin-install/
 /dsh-plugin-capabilities/
 /.tmp-npm-check/
+/dsh-plugin-atlas/
