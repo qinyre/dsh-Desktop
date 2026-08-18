@@ -10,7 +10,7 @@ const MANIFEST = JSON.stringify({
   private: true,
   dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dshmarket', 'dsh-plugin-install', 'dsh-plugin-capabilities'] } },
   dependencies: {
-    'dsh-plugin-capabilities': '0.1.6',
+    'dsh-plugin-capabilities': '0.2.0',
     'dsh-plugin-install': '0.2.0',
     dshmarket: '1.11.2',
   },
@@ -33,7 +33,7 @@ describe('bundleBrickName', () => {
 
 describe('repairSpecFromManifest', () => {
   it('pins to the declared dependency version (restore last known good)', () => {
-    expect(repairSpecFromManifest(MANIFEST, 'dsh-plugin-capabilities')).toBe('dsh-plugin-capabilities@0.1.6')
+    expect(repairSpecFromManifest(MANIFEST, 'dsh-plugin-capabilities')).toBe('dsh-plugin-capabilities@0.2.0')
   })
   it('falls back to a bare name when bundles declare it but the dependency line vanished', () => {
     expect(repairSpecFromManifest(MANIFEST, 'dsh-plugin-install')).toBe('dsh-plugin-install@0.2.0')
@@ -73,7 +73,7 @@ describe('BundleBrickHealer', () => {
   it('repairs with the pinned spec and announces recovery', async () => {
     const fx = healerFixture()
     expect(fx.healer.consider()).toBe(true)
-    expect(fx.repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.1.6')
+    expect(fx.repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.2.0')
     // 修复 promise 已在 consider 内部被 await 前启动；等微任务队列排空。
     await Promise.resolve()
     await Promise.resolve()
