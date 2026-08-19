@@ -29,7 +29,7 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.2'
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.3'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.4'
 
 /**
  * 预装的归档与刻度尺插件版本（qinyre/dsh-plugin-atlas，设置页一级分区「归档管理」
