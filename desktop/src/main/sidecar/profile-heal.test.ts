@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { BundleBrickHealer, bundleBrickName, repairSpecFromManifest } from './profile-heal'
+import { auditProfileBundles, BundleBrickHealer, bundleBrickName, guttedBundlesFromManifest, repairSpecFromManifest } from './profile-heal'
 
 // 2026-08-18 用户实机 sidecar.log 采到的报错行（路径含空格与反斜杠原样保留）。
 const BRICK_LINE = 'Error: dsh: cannot resolve profile bundle "dsh-plugin-capabilities" from the dsh installation or C:\\Users\\86184\\AppData\\Roaming\\DSH Desktop\\dsh-home\\profiles\\web; run \'dsh plugin --profile web install\' if its dependency is not installed'
@@ -228,5 +228,80 @@ describe('BundleBrickHealer', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(repair).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('guttedBundlesFromManifest', () => {
+  it('lists dependency-managed bundles with name@spec (template bundles excluded)', () => {
+    const list = guttedBundlesFromManifest(MANIFEST)!.map(({ name, spec }) => `${name}:${spec}`)
+    expect(list).toEqual([
+      'dshmarket:dshmarket@1.11.2',
+      'dsh-plugin-install:dsh-plugin-install@0.2.0',
+      'dsh-plugin-capabilities:dsh-plugin-capabilities@0.3.4',
+    ])
+  })
+  it('passes schemed dependency specs through raw (name@ would alias-install)', () => {
+    const manifest = JSON.stringify({
+      dependencies: { 'dsh-plugin-x': 'github:qinyre/dsh-plugin-x#abc', 'dsh-plugin-y': 'file:../y' },
+      dsh: { profile: { bundles: ['dsh-plugin-x', 'dsh-plugin-y'] } },
+    })
+    const list = guttedBundlesFromManifest(manifest)!
+    expect(list.find(({ name }) => name === 'dsh-plugin-x')?.spec).toBe('github:qinyre/dsh-plugin-x#abc')
+    expect(list.find(({ name }) => name === 'dsh-plugin-y')?.spec).toBe('file:../y')
+  })
+  it('returns null on a corrupt or bundle-less manifest', () => {
+    expect(guttedBundlesFromManifest('{oops')).toBeNull()
+    expect(guttedBundlesFromManifest('{"dependencies":{"a":"1.0.0"}}')).toBeNull()
+  })
+})
+
+describe('auditProfileBundles', () => {
+  it('repairs only gutted dependency bundles, sequentially with their dep spec', async () => {
+    const repair = vi.fn(async () => 0)
+    const lines: string[] = []
+    const repaired = await auditProfileBundles({
+      readManifest: () => MANIFEST,
+      bundleIntact: (name) => name !== 'dsh-plugin-capabilities',
+      repair,
+      log: (line) => { lines.push(line) },
+    })
+    expect(repaired).toEqual(['dsh-plugin-capabilities'])
+    expect(repair).toHaveBeenCalledTimes(1)
+    expect(repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.3.4')
+    expect(lines.join('\n')).toContain('repairing with dsh-plugin-capabilities@0.3.4')
+  })
+  it('touches nothing when every bundle dir is intact', async () => {
+    const repair = vi.fn(async () => 0)
+    const repaired = await auditProfileBundles({
+      readManifest: () => MANIFEST, bundleIntact: () => true, repair, log: () => {},
+    })
+    expect(repaired).toEqual([])
+    expect(repair).not.toHaveBeenCalled()
+  })
+  it('keeps auditing past a failed or throwing repair (loader patch skips the bundle)', async () => {
+    const repair = vi.fn()
+      .mockImplementationOnce(async () => { throw new Error('EPERM') })
+      .mockImplementationOnce(async () => 0)
+    const lines: string[] = []
+    const repaired = await auditProfileBundles({
+      readManifest: () => MANIFEST,
+      bundleIntact: (name) => name !== 'dsh-plugin-capabilities' && name !== 'dshmarket',
+      repair,
+      log: (line) => { lines.push(line) },
+    })
+    expect(repaired).toEqual(['dsh-plugin-capabilities'])
+    expect(repair).toHaveBeenCalledTimes(2)
+    expect(lines.join('\n')).toContain('threw: Error: EPERM')
+  })
+  it('skips quietly when the manifest is unreadable', async () => {
+    const repair = vi.fn(async () => 0)
+    const lines: string[] = []
+    const repaired = await auditProfileBundles({
+      readManifest: () => null, bundleIntact: () => false, repair,
+      log: (line) => { lines.push(line) },
+    })
+    expect(repaired).toEqual([])
+    expect(repair).not.toHaveBeenCalled()
+    expect(lines.join('\n')).toContain('unreadable')
   })
 })

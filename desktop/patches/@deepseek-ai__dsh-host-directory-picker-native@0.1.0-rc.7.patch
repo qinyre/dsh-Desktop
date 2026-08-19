@@ -1,7 +1,7 @@
-diff --git a/node_modules/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs b/node_modules/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs
-index 14f4584..144b69c 100644
---- a/node_modules/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs
-+++ b/node_modules/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs
+diff --git a/lib/worker.cjs b/lib/worker.cjs
+index 14f4584c748bbec5a1a0282afe486c098668dfe6..144b69c352ba10fa1acedb13c4e0c56fe8032201 100644
+--- a/lib/worker.cjs
++++ b/lib/worker.cjs
 @@ -14,15 +14,24 @@
  */
  /**

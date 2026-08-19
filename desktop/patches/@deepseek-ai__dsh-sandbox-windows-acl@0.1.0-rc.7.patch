@@ -1,7 +1,7 @@
-diff --git a/node_modules/@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js b/node_modules/@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js
-index 3a737a6..a954f1a 100644
---- a/node_modules/@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js
-+++ b/node_modules/@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js
+diff --git a/lib/types-CNjZgO4h.js b/lib/types-CNjZgO4h.js
+index 3a737a6e66db2524da1afcf13299f68aa5c0351d..a954f1af2178d4952d87cbd7d2b05999a1be9aa7 100644
+--- a/lib/types-CNjZgO4h.js
++++ b/lib/types-CNjZgO4h.js
 @@ -854,7 +854,8 @@ function spawnSandboxed(api, token, options) {
  	const startupInfo = allocStartupInfo();
  	encodeStartupInfo(startupInfo, {

@@ -1,7 +1,7 @@
-diff --git a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
-index 75fae74..17abf55 100644
---- a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
-+++ b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
+diff --git a/lib/index.js b/lib/index.js
+index 75fae74961306a992cde304e7311812c6e712de8..17abf55907e0d8fdbe25582e8743eca3b186168e 100644
+--- a/lib/index.js
++++ b/lib/index.js
 @@ -497,7 +497,7 @@ function taskkillProcessTree(pid) {
  		String(pid),
  		"/T",

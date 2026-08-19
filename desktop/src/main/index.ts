@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { app, ipcMain, Menu, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
-import { BundleBrickHealer } from './sidecar/profile-heal'
+import { auditProfileBundles, BundleBrickHealer } from './sidecar/profile-heal'
 import { repairSkinsBrick, skinBrickDetected } from './sidecar/skin-selfheal'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
@@ -98,6 +98,23 @@ if (!gotLock) {
     ipcMain.on('dsh:titlebar-color', (_event, css) => {
       if (typeof css === 'string') windows?.setTitleBarColor(css)
     })
+    // 启动前 bundle 目录审计（profile-heal.ts 头注释有完整事故事实）：UI 内插件
+    // 更新会被运行中 sidecar 的 fs.watch 句柄以 EPERM 打断、掏空包目录，且运行期
+    // 重装同样 EPERM——唯一可靠的修复窗口是此刻（sidecar 未起、句柄不存在）。
+    // 按 profile 依赖规格重跑 add（实测幂等）；失败不阻断启动，loader 补丁会把
+    // 缺件 bundle 降级为跳过 + 告警。健康时开销仅为一次清单读取 + 若干 exists。
+    if (paths.dshHome !== undefined) {
+      const repaired = await auditProfileBundles({
+        readManifest: () => { try { return readFileSync(join(paths.dshHome!, 'profiles', 'web', 'package.json'), 'utf8') } catch { return null } },
+        bundleIntact: (name) => existsSync(join(paths.dshHome!, 'profiles', 'web', 'node_modules', name, 'package.json')),
+        repair: (_name, spec) => seedBundle({
+          mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+          env: sidecarEnv, spec, onOutput: (line) => { logger.appendLine(line) },
+        }),
+        log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
+      })
+      if (repaired.length > 0) logger.appendLine(`[dsh-desktop] pre-boot bundle audit repaired: ${repaired.join(', ')}`)
+    }
     // 预装插件市场（仅打包模式：dev 不动用户的真实 DSH_HOME）。经 dsh CLI 安装，首启时
     // profile 尚不存在也成立（CLI 自带初始化 + reconcile）；失败不阻断启动，下次再试。
     if (paths.dshHome !== undefined && !marketSeeded(paths.dshHome)) {

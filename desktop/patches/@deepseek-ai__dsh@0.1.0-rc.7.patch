@@ -1,7 +1,7 @@
-diff --git a/node_modules/@deepseek-ai/dsh/lib/plugin-9h8shc4d.js b/node_modules/@deepseek-ai/dsh/lib/plugin-9h8shc4d.js
-index 1d7b74d..246a74e 100644
---- a/node_modules/@deepseek-ai/dsh/lib/plugin-9h8shc4d.js
-+++ b/node_modules/@deepseek-ai/dsh/lib/plugin-9h8shc4d.js
+diff --git a/lib/plugin-9h8shc4d.js b/lib/plugin-9h8shc4d.js
+index 1d7b74d19fd0fc4d3d577b2254d5fabf6349eabc..246a74e728519a52fc1bb8a2eabe6d678496872b 100644
+--- a/lib/plugin-9h8shc4d.js
++++ b/lib/plugin-9h8shc4d.js
 @@ -108,6 +108,7 @@ function runPlugin(profile, args) {
  	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
  		cwd: dir,

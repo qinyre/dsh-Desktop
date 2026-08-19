@@ -18,7 +18,6 @@
     "smoke:hideconsole": "electron scripts/spawn-windowhide-smoke.cjs",
     "dist": "electron-vite build && electron-builder --win nsis --publish never",
     "dist:signed": "node scripts/check-signing-env.mjs && electron-vite build && electron-builder --win nsis --config electron-builder.signed.mjs && node scripts/verify-signature.mjs",
-    "postinstall": "patch-package",
     "icons": "node scripts/make-icons.mjs",
     "verify:bundle": "node scripts/verify-bundle.mjs"
   },
@@ -52,7 +51,6 @@
     "electron": "43.4.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
-    "patch-package": "^8.0.1",
     "png-to-ico": "^3.0.2",
     "sharp": "^0.35.3",
     "typescript": "^7.0.2",

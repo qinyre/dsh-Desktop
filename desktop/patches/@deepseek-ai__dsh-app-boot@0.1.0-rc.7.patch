@@ -1,0 +1,34 @@
+diff --git a/lib/index.js b/lib/index.js
+index 3a53e819b0affbe6fee86ce2328634f3f8d1bdd0..578c30c5ce3688e240ae53d0630b0c32b9e42ded 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -544,7 +544,19 @@ function loadProfile(binName, name, installAnchor, home = resolveDshHome(), opti
+ 		initProfile(dir, template);
+ 	}
+ 	const layers = (normalizeShippedProfile(name, dir, readProfileManifest(binName, dir)).dsh?.profile?.bundles ?? []).map((packageName) => {
+-		const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir);
++		let packageDir;
++		try {
++			packageDir = resolveBundleDir(binName, packageName, installAnchor, dir);
++		} catch (error) {
++			// DSH Desktop: a bundle whose package directory is missing or gutted
++			// (interrupted plugin update, antivirus quarantine, …) must degrade
++			// this boot to "plugin absent", not crash the whole sidecar into a
++			// boot loop. The desktop's pre-boot audit repairs the directory
++			// before the sidecar starts; this skip is the never-brick net.
++			process.stderr.write(`${binName}: warning: skipping profile bundle ${JSON.stringify(packageName)} for this boot: ${String(error)}
++`);
++			return null;
++		}
+ 		const declared = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).dsh?.bundle?.patch;
+ 		if (declared === void 0) throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`);
+ 		const patchPath = join(packageDir, declared);
+@@ -554,7 +566,7 @@ function loadProfile(binName, name, installAnchor, home = resolveDshHome(), opti
+ 			patchPath,
+ 			patches: loadOverlayPatches(binName, patchPath)
+ 		};
+-	});
++	}).filter((layer) => layer !== null);
+ 	const patchPath = join(dir, PROFILE_PATCH_FILENAME);
+ 	return {
+ 		name,

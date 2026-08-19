@@ -1,12 +1,17 @@
 /**
  * 断链 profile bundle 自愈（事故兜底，非功能演进）。
  *
- * 事故事实（2026-08-18 用户实机）：插件更新途中 pnpm 被打断（应用退出/重启撞上
- * 安装，或 Windows 文件锁致 pnpm 异常退出），留下「dsh.profile.bundles 声明了包、
- * node_modules 里目录为空」的断链态——dsh-app-boot 的 resolveBundleDir 在组合期
- * 直接抛错，sidecar 进入崩溃循环，任何插件（包括安装器自己）都加载不上，只有
- * 壳层能修。修复动作本身被证明是幂等的：重跑一次 `dsh plugin add <name>@<钉住
- * 版本>`（同 seedBundle 路径，实测 488ms 补齐 node_modules）。
+ * 事故事实（2026-08-18/19 用户实机，根因已复现实锤）：在 UI 里更新插件时，
+ * 运行中的 sidecar 持有插件包目录的 fs.watch（ReadDirectoryChangesW）句柄
+ * （宿主技能文件系统监听 vendored 技能目录，capabilities 类插件自带
+ * skills/），pnpm 换装在该句柄下命中 ERR_PNPM_EPERM 中途死亡，留下
+ * 「dsh.profile.bundles 声明了包、node_modules 里目录被掏空」的断链态。
+ * 此后：dsh-app-boot 的 resolveBundleDir 在组合期直接抛错 → sidecar 崩溃
+ * 循环（已由 loader 补丁降级为跳过 + 告警）；且 sidecar 运行期重装同样
+ * EPERM——唯一可靠的修复窗口是启动早期（进程未起、句柄不存在）。
+ *
+ * 双层防线：auditProfileBundles 在拉起 sidecar 前按 profile 依赖规格重装
+ * 缺件目录（主路径，实测幂等）；BundleBrickHealer 留作崩溃期的兜底。
  *
  * 特征行是 dsh-app-boot 的英文报错（ASCII，不受 GBK 影响）；只修 profile 依赖里
  * 声明过的社区插件——@deepseek-ai 安装级包缺件是另一类问题（electron-builder
@@ -164,4 +169,90 @@ export class BundleBrickHealer {
   private safeOnRepaired(): void {
     try { this.opts.onRepaired() } catch { /* shell restart is best-effort here */ }
   }
+}
+
+/** 依赖规格自带协议前缀（github:/file:/link:/git+/https:…）：pnpm 要的是
+ * 裸规格，套上 name@ 前缀会变成别名安装。 */
+const SCHEMED_SPEC_RE = /^(?:[a-z]+:\/\/|[a-z]+:|git\+)/i
+
+/** 一个待修复的依赖型 bundle。 */
+export interface GuttedBundle {
+  name: string
+  /** 可直接交给 `dsh plugin add` 的规格。 */
+  spec: string
+}
+
+/**
+ * 从 profile package.json 文本推导依赖型 bundle 的修复清单：bundles ∩
+ * dependencies（template 包如 dsh-base 不是依赖，由安装目录兜底，不在此列）。
+ * 解析失败返回 null；清单为空返回空数组。
+ */
+export function guttedBundlesFromManifest(manifestText: string): GuttedBundle[] | null {
+  let parsed: {
+    dependencies?: Record<string, string>
+    dsh?: { profile?: { bundles?: unknown } }
+  }
+  try {
+    parsed = JSON.parse(manifestText) as typeof parsed
+  } catch {
+    return null
+  }
+  const bundles = parsed.dsh?.profile?.bundles
+  if (!Array.isArray(bundles)) return null
+  const result: GuttedBundle[] = []
+  for (const name of bundles) {
+    if (typeof name !== 'string') continue
+    const dep = parsed.dependencies?.[name]
+    if (typeof dep !== 'string' || dep === '') continue
+    result.push({ name, spec: SCHEMED_SPEC_RE.test(dep) ? dep : `${name}@${dep}` })
+  }
+  return result
+}
+
+/**
+ * 启动前 bundle 目录审计（治本主路径）：sidecar 拉起之前，profile 声明的
+ * 依赖型 bundle 若 node_modules 下没有 package.json（被 EPERM 更新掏空），
+ * 按依赖规格逐个重跑 add——此刻监听句柄尚不存在，安装必成（sidecar 运行
+ * 期同样的 add 会再次 EPERM）。修复失败不抛错：loader 补丁会把缺件
+ * bundle 降级为跳过 + 告警，启动照常。
+ * @returns 修复成功的包名列表（供壳层记录一行汇总）。
+ */
+export async function auditProfileBundles(opts: {
+  /** profile package.json 全文；读失败返回 null。 */
+  readManifest: () => string | null
+  /** 包目录是否完好（node_modules/<name>/package.json 存在）。 */
+  bundleIntact: (name: string) => boolean
+  /** 执行修复（name, spec），返回退出码。 */
+  repair: (name: string, spec: string) => Promise<number>
+  log: (line: string) => void
+}): Promise<string[]> {
+  const safeLog = (line: string): void => { try { opts.log(line) } catch { /* 日志不可用不阻断审计 */ } }
+  let manifest: string | null = null
+  try { manifest = opts.readManifest() } catch { manifest = null }
+  if (manifest === null) {
+    safeLog('profile manifest unreadable; skipping the pre-boot bundle audit')
+    return []
+  }
+  const candidates = guttedBundlesFromManifest(manifest) ?? []
+  const gutted = candidates.filter(({ name }) => {
+    try { return !opts.bundleIntact(name) } catch { return false }
+  })
+  const repaired: string[] = []
+  for (const { name, spec } of gutted) {
+    safeLog(`profile bundle "${name}" has no package dir; repairing with ${spec} before the sidecar starts`)
+    let code = 1
+    try {
+      code = await opts.repair(name, spec)
+    } catch (error) {
+      safeLog(`repair of "${name}" threw: ${String(error)}`)
+      continue
+    }
+    if (code === 0) {
+      repaired.push(name)
+      safeLog(`repair of "${name}" succeeded`)
+    } else {
+      safeLog(`repair of "${name}" failed (exit ${code}); the loader patch will skip it this boot`)
+    }
+  }
+  return repaired
 }
