@@ -22,11 +22,12 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.1'
  * 与通用设置/模型同级，内含「技能」「MCP」「市场」三个标签页）。0.2.0 起新增：逐技能
  * 开关加载、手动注册本地/GitHub 技能仓库、技能与 MCP 两个精选市场；0.3.0 起市场条目
  * 可点开详情（技能清单、MCP 启动命令/环境变量/工具清单）；0.3.1 起收录扩容（技能仓库
- * 8 个、MCP 服务器 16 个）且详情为双语长文 + 逐技能简介。
+ * 8 个、MCP 服务器 16 个）且详情为双语长文 + 逐技能简介；0.3.2 详情弹窗加宽到 720px
+ * 并改为内部滚动（宿主弹窗固定 380px 细柱，长文会被裁切）。
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.1'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.2'
 
 /**
  * 预装的归档与刻度尺插件版本（qinyre/dsh-plugin-atlas，设置页一级分区「归档管理」
