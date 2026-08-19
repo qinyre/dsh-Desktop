@@ -6,6 +6,7 @@
   "description": "DSH Desktop — zero-config DeepSeek Harness desktop client",
   "author": "DSH Desktop Project",
   "main": "out/main/index.js",
+  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

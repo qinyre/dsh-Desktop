@@ -10,7 +10,7 @@ const MANIFEST = JSON.stringify({
   private: true,
   dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dshmarket', 'dsh-plugin-install', 'dsh-plugin-capabilities'] } },
   dependencies: {
-    'dsh-plugin-capabilities': '0.3.4',
+    'dsh-plugin-capabilities': '0.3.5',
     'dsh-plugin-install': '0.2.0',
     dshmarket: '1.11.2',
   },
@@ -33,7 +33,7 @@ describe('bundleBrickName', () => {
 
 describe('repairSpecFromManifest', () => {
   it('pins to the declared dependency version (restore last known good)', () => {
-    expect(repairSpecFromManifest(MANIFEST, 'dsh-plugin-capabilities')).toBe('dsh-plugin-capabilities@0.3.4')
+    expect(repairSpecFromManifest(MANIFEST, 'dsh-plugin-capabilities')).toBe('dsh-plugin-capabilities@0.3.5')
   })
   it('falls back to a bare name when bundles declare it but the dependency line vanished', () => {
     expect(repairSpecFromManifest(MANIFEST, 'dsh-plugin-install')).toBe('dsh-plugin-install@0.2.0')
@@ -73,7 +73,7 @@ describe('BundleBrickHealer', () => {
   it('repairs with the pinned spec and announces recovery', async () => {
     const fx = healerFixture()
     expect(fx.healer.consider()).toBe(true)
-    expect(fx.repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.3.4')
+    expect(fx.repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.3.5')
     // 修复 promise 已在 consider 内部被 await 前启动；等微任务队列排空。
     await Promise.resolve()
     await Promise.resolve()
@@ -179,7 +179,7 @@ describe('BundleBrickHealer', () => {
     let brick = BRICK_LINE
     const healer = new BundleBrickHealer({
       readLog: () => brick,
-      readManifest: () => JSON.stringify({ dependencies: { 'dsh-plugin-capabilities': '0.3.4', 'pkg-next': '1.0.0' } }),
+      readManifest: () => JSON.stringify({ dependencies: { 'dsh-plugin-capabilities': '0.3.5', 'pkg-next': '1.0.0' } }),
       repair,
       log: () => { throw new Error('appendFileSync EBUSY') },
       onRepaired: () => {},
@@ -237,7 +237,7 @@ describe('guttedBundlesFromManifest', () => {
     expect(list).toEqual([
       'dshmarket:dshmarket@1.11.2',
       'dsh-plugin-install:dsh-plugin-install@0.2.0',
-      'dsh-plugin-capabilities:dsh-plugin-capabilities@0.3.4',
+      'dsh-plugin-capabilities:dsh-plugin-capabilities@0.3.5',
     ])
   })
   it('passes schemed dependency specs through raw (name@ would alias-install)', () => {
@@ -267,8 +267,8 @@ describe('auditProfileBundles', () => {
     })
     expect(repaired).toEqual(['dsh-plugin-capabilities'])
     expect(repair).toHaveBeenCalledTimes(1)
-    expect(repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.3.4')
-    expect(lines.join('\n')).toContain('repairing with dsh-plugin-capabilities@0.3.4')
+    expect(repair).toHaveBeenCalledWith('dsh-plugin-capabilities', 'dsh-plugin-capabilities@0.3.5')
+    expect(lines.join('\n')).toContain('repairing with dsh-plugin-capabilities@0.3.5')
   })
   it('touches nothing when every bundle dir is intact', async () => {
     const repair = vi.fn(async () => 0)

@@ -5,7 +5,22 @@ const fail = (message) => {
   process.exit(1)
 }
 
-const { default: LocalSubprocessRuntime } = await import('@deepseek-ai/dsh-subprocess-local')
+// pnpm 布局下传递依赖在 .pnpm/node_modules 隐藏提升位（顶层无目录），npm 扁平布局
+// 才在顶层——裸 import / require.resolve 都只走顶层，统一先试两处再按文件路径导入。
+const { pathToFileURL, fileURLToPath } = await import('node:url')
+const { existsSync } = await import('node:fs')
+const { join } = await import('node:path')
+const scriptDir = fileURLToPath(new URL('.', import.meta.url))
+const packageDir = (name) => {
+  for (const base of ['node_modules', join('node_modules', '.pnpm', 'node_modules')]) {
+    const dir = join(scriptDir, '..', base, name)
+    if (existsSync(join(dir, 'package.json'))) return dir
+  }
+  return fail(`cannot locate ${name} (flat or .pnpm hoist) — run pnpm install first`)
+}
+const { default: LocalSubprocessRuntime } = await import(
+  pathToFileURL(join(packageDir('@deepseek-ai/dsh-subprocess-local'), 'lib', 'index.js')).href
+)
 // 构造器只要 cordis ctx 的 reflect/effect 成员（脱离插件宿主的最小桩）。
 const runtime = new LocalSubprocessRuntime({ reflect: { provide: () => {} }, effect: () => () => {} })
 
@@ -37,13 +52,10 @@ console.log(`[hideconsole-child] terminate 路径 OK（exit=${killed.exitCode} s
 
 // 3) 完整工具链：真实 ACL 运行器（受限令牌 + 原生 CreateProcessAsUserW）执行 powershell——
 //    补丁前正是这一环弹黑窗（运行器无控制台，pwsh 自建控制台）。
-const { createRequire } = await import('node:module')
 const { spawn } = await import('node:child_process')
 const { mkdtempSync } = await import('node:fs')
 const { tmpdir } = await import('node:os')
-const { join, dirname } = await import('node:path')
-const require = createRequire(import.meta.url)
-const aclRunner = join(dirname(require.resolve('@deepseek-ai/dsh-sandbox-windows-acl/package.json')), 'lib', 'runner.js')
+const aclRunner = join(packageDir('@deepseek-ai/dsh-sandbox-windows-acl'), 'lib', 'runner.js')
 const workDir = mkdtempSync(join(tmpdir(), 'dsh-hideconsole-'))
 const runner = spawn(process.execPath, [
   aclRunner, '--workspace', workDir, '--temp', tmpdir(), '--mode', 'read-only',

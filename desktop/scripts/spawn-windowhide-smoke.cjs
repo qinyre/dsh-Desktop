@@ -28,8 +28,16 @@ const sites = [
   ['@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js', 'dwFlags: 257,', 'ACL 原生 spawn SW_HIDE（管道版）'],
   ['@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js', 'wShowWindow: 0,', 'ACL 原生 spawn SW_HIDE（inherit 版）'],
 ]
+// pnpm 布局下传递依赖不在顶层（.pnpm/node_modules 隐藏提升位），npm 扁平布局才在；
+// 补丁经 pnpm patchedDependencies 作用于两处共用的 store 真身。
+const readInstalled = (file) => {
+  for (const candidate of [path.join(root, 'node_modules', file), path.join(root, 'node_modules', '.pnpm', 'node_modules', file)]) {
+    try { return readFileSync(candidate, 'utf8') } catch { /* try next layout */ }
+  }
+  fail(`${file} not found (flat or .pnpm hoist) — run pnpm install first`)
+}
 for (const [file, needle, label] of sites) {
-  const raw = readFileSync(path.join(root, 'node_modules', file), 'utf8')
+  const raw = readInstalled(file)
   const text = raw.replace(/\r\n/g, '\n')
   if (!text.includes(needle)) {
     const at = text.indexOf('windowsHide')

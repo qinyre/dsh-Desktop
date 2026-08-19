@@ -3,6 +3,7 @@ allowBuilds:
   '@google/genai': true
   electron-winstaller: true
   esbuild: true
+  electron: true
   koffi: true
   node-pty: true
   protobufjs: true

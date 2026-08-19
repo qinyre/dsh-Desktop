@@ -84,10 +84,22 @@ const fs = require('node:fs')
 const { spawnSync } = require('node:child_process')
 const path = require('node:path')
 
-const workerPath = path.join(__dirname, '..', 'node_modules', '@deepseek-ai', 'dsh-host-directory-picker-native', 'lib', 'worker.cjs')
-if (!fs.existsSync(workerPath)) fail('worker.cjs not found — run npm install first')
-const workerSrc = fs.readFileSync(workerPath, 'utf8')
-if (workerSrc.includes('koffi.view(address')) fail('patch not applied: worker.cjs still calls koffi.view() (npm ci + patch-package must run)')
+// 补丁位点的文件解析要兼容两种布局：npm 扁平（顶层）与 pnpm（传递依赖在
+// .pnpm/node_modules 隐藏提升位，顶层没有目录）。补丁经 pnpm patchedDependencies
+// 作用于两处共用的 store 真身。
+const readInstalled = (relative) => {
+  const candidates = [
+    path.join(__dirname, '..', 'node_modules', relative),
+    path.join(__dirname, '..', 'node_modules', '.pnpm', 'node_modules', relative),
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return fs.readFileSync(candidate, 'utf8')
+  }
+  return null
+}
+const workerSrc = readInstalled(path.join('@deepseek-ai', 'dsh-host-directory-picker-native', 'lib', 'worker.cjs'))
+if (workerSrc === null) fail('worker.cjs not found (flat or .pnpm hoist) — run pnpm install first')
+if (workerSrc.includes('koffi.view(address')) fail('patch not applied: worker.cjs still calls koffi.view() (pnpm install must apply patchedDependencies)')
 if (!workerSrc.includes('koffi.decode(address')) fail('patch not applied: decode-based readUtf16 missing from worker.cjs')
 
 const child = spawnSync(process.execPath, [__filename], {
