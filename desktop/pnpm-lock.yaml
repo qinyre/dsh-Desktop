@@ -88,6 +88,9 @@ importers:
       '@electron-toolkit/tsconfig':
         specifier: ^2.0.0
         version: 2.0.0(@types/node@26.2.0)
+      '@types/node':
+        specifier: ^26.2.0
+        version: 26.2.0
       electron:
         specifier: 43.4.0
         version: 43.4.0(supports-color@7.2.0)
