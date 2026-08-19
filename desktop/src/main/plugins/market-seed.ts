@@ -14,8 +14,10 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * patch 配置覆盖——与市场不同，它没有脱离监督的自重启路径。
  * 0.2.1 起：安装/更新/卸载失败一律以 200 携带结果体返回并由页面渲染
  * 红色横幅（此前命令失败会被当成 HTTP 错误抛掉，页面毫无反馈）。
+ * 0.2.2 起：发布后秒点更新撞上的 ERR_PNPM_NO_VERSIONS（registry 元数据
+ * 传播竞态）自动延时重试一次，仍失败则横幅附「稍候重试」提示。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.1'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.2'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
