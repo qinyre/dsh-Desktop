@@ -49,11 +49,21 @@ export function repairSpecFromManifest(manifestText: string, name: string): stri
   return null
 }
 
-/** 自愈器编排：单飞（崩溃循环会高频触发）、每名至多尝试一次、总量限额。 */
+/** 一个断链包在本进程内的处置状态。 */
+type NameState = 'started' | 'done' | 'failed'
+
+/** 自愈器编排：单飞（崩溃循环会高频触发）、每名至多尝试一次、总量限额。
+ *
+ * 2026-08-19 用户实机事故教训：断链崩溃循环里自愈一次都没触发，且四份轮转
+ * 日志零痕迹——所有放弃路径此前都是静默的，事后无法定位是哪一环退出。现在
+ * 每个有意义的放弃路径都留一次性日志；日志写出失败被吞掉（日志永远不能阻断
+ * 自愈）；repair 同步抛错会复位单飞标志；failed 终态时对「修复失败过」的包
+ * 再给一次机会（预算仍封顶）。 */
 export class BundleBrickHealer {
   private inflight = false
   private repairs = 0
-  private readonly attemptedNames = new Set<string>()
+  private readonly names = new Map<string, NameState>()
+  private readonly loggedOnce = new Set<string>()
 
   constructor(private readonly opts: {
     /** 当前 sidecar 日志全文；读失败返回 null。 */
@@ -69,42 +79,89 @@ export class BundleBrickHealer {
     maxRepairs?: number
   }) {}
 
+  /** 日志是取证生命线，但写日志失败绝不能反过来打断自愈。 */
+  private safeLog(line: string): void {
+    try { this.opts.log(line) } catch { /* logging must never break healing */ }
+  }
+
+  private logOnce(key: string, line: string): void {
+    if (this.loggedOnce.has(key)) return
+    this.loggedOnce.add(key)
+    this.safeLog(line)
+  }
+
   /**
    * 喂一次崩溃现场：命中特征且允许时启动异步修复。修复期间（数秒到数十秒，
    * 管理器的退避重启会自行耗尽预算落到 failed）重复调用是 no-op；成功后若
-   * 仍在 failed，由 onRepaired 拉起新一轮。
+   * 仍在 failed，由 onRepaired 拉起新一轮。terminal 对应管理器放弃重启的
+   * 终态——此时对修复失败过的包再尝试一次（仍受总量限额约束）。
    */
-  consider(): boolean {
-    if (this.inflight || this.repairs >= (this.opts.maxRepairs ?? 3)) return false
-    const logText = this.opts.readLog()
-    if (logText === null) return false
+  consider(opts: { terminal?: boolean } = {}): boolean {
+    if (this.inflight) return false
+    if (this.repairs >= (this.opts.maxRepairs ?? 3)) {
+      this.logOnce('budget', `repair budget exhausted (${this.repairs}); leaving the failure page up`)
+      return false
+    }
+    let logText: string | null = null
+    try { logText = this.opts.readLog() } catch { logText = null }
+    if (logText === null) {
+      this.logOnce('read-log', 'sidecar log unreadable; cannot look for a brick signature')
+      return false
+    }
     const name = bundleBrickName(logText)
-    if (name === null || this.attemptedNames.has(name)) return false
-    const manifest = this.opts.readManifest()
-    if (manifest === null) return false
+    if (name === null) return false
+    const state = this.names.get(name)
+    if (state === 'started' || state === 'done' || (state === 'failed' && opts.terminal !== true)) {
+      if (opts.terminal === true && state !== 'started') {
+        this.logOnce(`still:${name}`, `profile bundle "${name}" still unresolvable after its repair attempt; leaving it to the failure page`)
+      }
+      return false
+    }
+    let manifest: string | null = null
+    try { manifest = this.opts.readManifest() } catch { manifest = null }
+    if (manifest === null) {
+      this.logOnce('read-manifest', 'profile manifest unreadable; cannot derive a repair spec')
+      return false
+    }
     const spec = repairSpecFromManifest(manifest, name)
     if (spec === null) {
       // 只记一次：崩溃循环会反复喂同一段日志。
-      this.opts.log(`profile bundle "${name}" unresolvable but not declared in the profile; leaving it to the failure page`)
-      this.attemptedNames.add(name)
+      this.logOnce(`foreign:${name}`, `profile bundle "${name}" unresolvable but not declared in the profile; leaving it to the failure page`)
+      this.names.set(name, 'done')
       return false
     }
     this.inflight = true
     this.repairs += 1
-    this.attemptedNames.add(name)
-    this.opts.log(`profile bundle "${name}" unresolvable; repairing with ${spec}`)
-    void this.opts.repair(name, spec).then((code) => {
+    this.names.set(name, 'started')
+    this.safeLog(`profile bundle "${name}" unresolvable; repairing with ${spec}`)
+    let promise: Promise<number>
+    try {
+      promise = this.opts.repair(name, spec)
+    } catch (error) {
+      this.inflight = false
+      this.names.set(name, 'failed')
+      this.safeLog(`repair of "${name}" threw: ${String(error)}`)
+      return true
+    }
+    void promise.then((code) => {
       this.inflight = false
       if (code === 0) {
-        this.opts.log(`repair of "${name}" succeeded; restarting if failed`)
-        this.opts.onRepaired()
+        this.names.set(name, 'done')
+        this.safeLog(`repair of "${name}" succeeded; restarting if failed`)
+        this.safeOnRepaired()
       } else {
-        this.opts.log(`repair of "${name}" failed (exit ${code}); see installer output above`)
+        this.names.set(name, 'failed')
+        this.safeLog(`repair of "${name}" failed (exit ${code}); will retry once more if the sidecar gives up`)
       }
     }, (error: unknown) => {
       this.inflight = false
-      this.opts.log(`repair of "${name}" threw: ${String(error)}`)
+      this.names.set(name, 'failed')
+      this.safeLog(`repair of "${name}" threw: ${String(error)}`)
     })
     return true
+  }
+
+  private safeOnRepaired(): void {
+    try { this.opts.onRepaired() } catch { /* shell restart is best-effort here */ }
   }
 }

@@ -161,4 +161,72 @@ describe('BundleBrickHealer', () => {
     expect(make(() => BRICK_LINE, () => null).consider()).toBe(false)
     expect(repair).not.toHaveBeenCalled()
   })
+  it('declines loudly (exactly once) when the log read itself throws', () => {
+    const lines: string[] = []
+    const healer = new BundleBrickHealer({
+      readLog: () => { throw new Error('EBUSY') },
+      readManifest: () => MANIFEST,
+      repair: vi.fn(async () => 0),
+      log: (line) => { lines.push(line) },
+      onRepaired: () => {},
+    })
+    expect(healer.consider()).toBe(false)
+    expect(healer.consider()).toBe(false)
+    expect(lines.filter(line => line.includes('unreadable'))).toHaveLength(1)
+  })
+  it('logging failures never break the heal or strand the flight', async () => {
+    const repair = vi.fn(async () => 0)
+    let brick = BRICK_LINE
+    const healer = new BundleBrickHealer({
+      readLog: () => brick,
+      readManifest: () => JSON.stringify({ dependencies: { 'dsh-plugin-capabilities': '0.3.4', 'pkg-next': '1.0.0' } }),
+      repair,
+      log: () => { throw new Error('appendFileSync EBUSY') },
+      onRepaired: () => {},
+    })
+    expect(healer.consider()).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(repair).toHaveBeenCalledTimes(1)
+    // 单飞已复位：新包名的断链仍能进入修复（日志持续抛错也不影响）。
+    brick = BRICK_LINE.replace('dsh-plugin-capabilities', 'pkg-next')
+    expect(healer.consider()).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(repair).toHaveBeenCalledTimes(2)
+  })
+  it('a synchronously throwing repair resets the flight and retries at terminal', () => {
+    const repair = vi.fn(() => { throw new Error('spawn ENOENT') })
+    const healer = new BundleBrickHealer({
+      readLog: () => BRICK_LINE,
+      readManifest: () => MANIFEST,
+      repair,
+      log: () => {},
+      onRepaired: () => {},
+    })
+    expect(healer.consider()).toBe(true)
+    expect(healer.consider()).toBe(false)
+    // failed 终态（管理器放弃重启）对修复失败过的包再给一次机会。
+    expect(healer.consider({ terminal: true })).toBe(true)
+    expect(repair).toHaveBeenCalledTimes(2)
+  })
+  it('re-attempts a failed async repair once the sidecar gives up', async () => {
+    const codes = [1, 0]
+    const repair = vi.fn(async () => codes.shift() ?? 0)
+    const healer = new BundleBrickHealer({
+      readLog: () => BRICK_LINE,
+      readManifest: () => MANIFEST,
+      repair,
+      log: () => {},
+      onRepaired: () => {},
+    })
+    expect(healer.consider()).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(healer.consider()).toBe(false)
+    expect(healer.consider({ terminal: true })).toBe(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(repair).toHaveBeenCalledTimes(2)
+  })
 })

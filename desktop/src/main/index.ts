@@ -187,12 +187,22 @@ if (!gotLock) {
       log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
       onRepaired: () => { if (sidecar?.state === 'failed') void sidecar.restart() },
     })
+    // 两个自愈互不连坐：任一抛错（含日志写入失败）只留痕，不得阻断另一个
+    // 或打断 statechange 处理（2026-08-19 实机断链事故里自愈零痕迹的教训）。
+    const runHealer = (label: string, run: () => void): void => {
+      try {
+        run()
+      } catch (error) {
+        try { logger.appendLine(`[dsh-desktop] ${label} threw: ${String(error)}`) } catch { /* 日志本身不可用 */ }
+      }
+    }
     sidecar.on('statechange', (state) => {
       if (state === 'spawning' || state === 'crashed') windows?.showStatus('launching')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
       if (state === 'crashed' || state === 'failed') {
-        healSkins()
-        bundleHealer?.consider()
+        runHealer('skin heal', () => healSkins())
+        // terminal：管理器已放弃重启，对修复失败过的包再给一次机会。
+        runHealer('bundle heal', () => bundleHealer?.consider({ terminal: state === 'failed' }))
       }
     })
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
