@@ -15,7 +15,13 @@ const nodeOk = (smokeNodeMajor === 22 && smokeNodeMinor >= 19) || smokeNodeMajor
 
 describe.skipIf(!guard || !nodeOk)('sidecar smoke', () => {
   const logDir = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
-  afterAll(() => rmSync(logDir, { recursive: true, force: true }))
+  // 必须隔离 DSH_HOME：默认 ~/.dsh 里只要有一个在跑的 dsh web（task-board
+  // 插件的台账单例锁），冒烟 sidecar 启动即撞锁崩死，重试到超时。
+  const dshHome = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-home-'))
+  afterAll(() => {
+    rmSync(logDir, { recursive: true, force: true })
+    rmSync(dshHome, { recursive: true, force: true })
+  })
 
   it('boots source-mode dsh web, reaches readiness, serves /api', { timeout: 120_000 }, async () => {
     const mgr = new SidecarManager({
@@ -25,7 +31,7 @@ describe.skipIf(!guard || !nodeOk)('sidecar smoke', () => {
         repoRoot,
         dshArgs: ['web', '--port', '0', '--host', '127.0.0.1'],
       }),
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_HOME: dshHome },
       logger: new SidecarLogger(logDir),
       readyTimeoutMs: 90_000,
     })
