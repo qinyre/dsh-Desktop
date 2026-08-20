@@ -27,8 +27,13 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 的 cordis.patch.yml 裸行 disabled 覆盖，层被 live watch，实时生效且不动
  * bundles 清单）；独立 dsh 下「重启服务」按钮做实（分离接力进程等待端口
  * 释放后按原 argv 重启自身）。
+ * 0.3.1 起：停用/挂载改为经 YAML 文档树重写补丁层——dsh 自己写入的流式行
+ * （MCP 配置）会让 0.3.0 的按行拼接产出无法解析的文件：实时重载静默失效
+ * （停用看似无效）、下次启动直接解析报错。0.3.0 写坏的层会被自动修复且保留
+ * 全部停用状态；node 产物带 createRequire banner（内联的 yaml 包是 CJS，
+ * 动态 require 在 ESM 产物里导入即崩），verify-bundle 补上 node 半边导入自检。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.0'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.1'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
