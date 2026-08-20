@@ -16,8 +16,11 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 红色横幅（此前命令失败会被当成 HTTP 错误抛掉，页面毫无反馈）。
  * 0.2.2 起：发布后秒点更新撞上的 ERR_PNPM_NO_VERSIONS（registry 元数据
  * 传播竞态）自动延时重试一次，仍失败则横幅附「稍候重试」提示。
+ * 0.2.3 起：安装/更新绕过 pnpm 11 默认的 24 小时发布冷静期（minimumReleaseAge
+ * 会把裸名/@latest 静默解析到窗口外旧版，更新看似成功实则原地不动），并在
+ * 更新完成后核对实际落地的版本号。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.2'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.3'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
