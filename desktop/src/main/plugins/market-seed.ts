@@ -22,8 +22,13 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 0.2.4 起：卸载同样绕过冷静期——pnpm 11 对整个 lockfile 做策略校验，只要
  * 有窗口内发布的条目（如钉版安装的传递依赖），remove 也会被一并拦死；
  * 失败横幅带出 pnpm 打在标准输出里的真实诊断。
+ * 0.3.0 起：后台定时自动检查更新（30 分钟节奏，设置页「插件」旁常显可更新
+ * 数角标）；插件卡片带简短描述与「源码」标签；新增停用/挂载开关（经 profile
+ * 的 cordis.patch.yml 裸行 disabled 覆盖，层被 live watch，实时生效且不动
+ * bundles 清单）；独立 dsh 下「重启服务」按钮做实（分离接力进程等待端口
+ * 释放后按原 argv 重启自身）。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.2.4'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.0'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
