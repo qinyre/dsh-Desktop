@@ -1,8 +1,8 @@
 diff --git a/lib/index.js b/lib/index.js
-index 75fae74961306a992cde304e7311812c6e712de8..17abf55907e0d8fdbe25582e8743eca3b186168e 100644
+index 698efc9357d249cf03adf82a9962499f9455fe66..c61bb166e8026268be70a27eeb992892d1c8d1d9 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -497,7 +497,7 @@ function taskkillProcessTree(pid) {
+@@ -746,7 +746,7 @@ function taskkillProcessTree(pid) {
  		String(pid),
  		"/T",
  		"/F"
@@ -11,7 +11,7 @@ index 75fae74961306a992cde304e7311812c6e712de8..17abf55907e0d8fdbe25582e8743eca3
  }
  /**
  * Signal a detached process tree with platform-correct semantics: POSIX
-@@ -553,6 +553,7 @@ function spawnSubprocess(spec, internals = {}) {
+@@ -802,6 +802,7 @@ function spawnSubprocess(spec, internals = {}) {
  			outMode === "inherit" ? "inherit" : "pipe",
  			errMode === "inherit" ? "inherit" : "pipe"
  		],

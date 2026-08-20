@@ -62,7 +62,7 @@ if (!existsSync(exe)) {
   console.log(`boot: copying win-unpacked to ${appDir} (isolated — no dev node_modules ancestors)`)
   cpSync(join(unpacked, '..', '..'), appDir, { recursive: true })
   const entry = join(appDir, 'resources', 'app.asar.unpacked', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-  const child = spawn(exe, ['--expose-internals', entry, 'web', '--port', '0', '--host', '127.0.0.1'], {
+  const child = spawn(exe, ['--expose-internals', entry, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'], {
     cwd: iso,
     env: {
       ELECTRON_RUN_AS_NODE: '1',

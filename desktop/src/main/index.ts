@@ -166,7 +166,10 @@ if (!gotLock) {
       }
     }
     sidecar = new SidecarManager({
-      runtime: () => resolveRuntime({ mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot, dshArgs: ['web', '--port', '0', '--host', '127.0.0.1'] }),
+      // rc.8 起 dsh web 在非 SSH 环境默认把就绪 URL 交给系统默认浏览器；桌面壳自带
+      // 窗口，必须 --no-open，否则每次启动都会多弹一个浏览器标签（SSH 抑制条件在
+      // 桌面场景永远不成立）。
+      runtime: () => resolveRuntime({ mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot, dshArgs: ['web', '--no-open', '--port', '0', '--host', '127.0.0.1'] }),
       env: sidecarEnv,
       logger,
     })
