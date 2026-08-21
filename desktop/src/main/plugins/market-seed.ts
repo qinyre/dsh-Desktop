@@ -48,7 +48,7 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 标题为「dsh web」的独立窗口里，终止它就在该窗口 Ctrl+C 或直接关窗；管道
  * 宿主维持隐藏分离路径不变。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.5'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.6'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
