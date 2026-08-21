@@ -49,8 +49,15 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * successor 由 relay（而非旧进程）以分离+inherit 拉起：分离躲开父退出的连带
  * 击杀，句柄直通原窗口，不再新开终端；successor 未附加控制台，Ctrl+C 归宿是
  * 等待中的 shell，关窗或杀 pid 才能停它；管道宿主维持隐藏分离路径不变。
+ * 0.3.8 起：0.3.7 的句柄直通实测不成立——node 对分离子进程根本不传控制台
+ * 句柄（fd 直接 EBADF），日志无处可去。改为 PowerShell 交接：relay 立即经
+ * conhost --headless 拉起隐藏 PS（powershell.exe 无控制台会静默暴毙，
+ * windowsHide 的隐藏控制台又会让 AttachConsole 报「已附加」，headless 给它
+ * 一个可抛弃的控制台），PS 内 FreeConsole + AttachConsole 到还活着的旧进程
+ * 控制台、等旧进程退场后以 -NoNewWindow 拉起 successor——真·附加回原终端，
+ * 日志续打且 Ctrl+C 直达；attach 失败自动退化为隐藏分离路径。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.7'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.8'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
