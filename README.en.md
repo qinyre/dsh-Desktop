@@ -14,7 +14,7 @@ Install and run. No Node.js, pnpm, or terminal required.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.0--rc.7-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.0--rc.8-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
 
@@ -84,38 +84,40 @@ The local HTTP API has no authentication — that is upstream's design, and the 
 
 ## Development
 
-Prerequisites: Node.js ≥ 22.19 (or ≥ 24), npm. For the integration smokes you also need a sibling checkout of the upstream repo:
+Prerequisites: Node.js ≥ 22.19 (or ≥ 24), pnpm (`corepack enable`; the version is pinned via packageManager). For the integration smokes you also need a sibling checkout of the upstream repo:
 
 ```bash
 git clone https://github.com/qinyre/dsh-Desktop.git
 cd dsh-Desktop
 git clone https://github.com/deepseek-ai/deepseek-harness.git   # dev-mode sidecar source
 cd deepseek-harness && pnpm install && pnpm run build && cd ..
-cd desktop && npm install
+cd desktop && pnpm install
 ```
 
 ```bash
-npm run dev            # launch the app (dev uses the source checkout)
-npm test               # unit tests
-npm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
-DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # clean-PATH market seed smoke (Windows)
-npm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
-npm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
-npm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
-npm run dist           # build the NSIS installer
-npm run verify:bundle  # packaged-app self-check: dependency closure + real boot from an isolated copy (run before every release)
-npm run dist:signed    # build + sign + verify the installer (credential env vars: docs/signing.md)
+pnpm run dev            # launch the app (dev uses the source checkout)
+pnpm test               # unit tests
+pnpm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
+DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # clean-PATH market seed smoke (Windows)
+pnpm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
+pnpm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
+pnpm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
+pnpm run dist           # build the NSIS installer
+pnpm run verify:bundle  # packaged-app self-check: dependency closure + real boot from an isolated copy (run before every release)
+pnpm run dist:signed    # build + sign + verify the installer (credential env vars: docs/signing.md)
 ```
 
 Dev mode resolves the upstream checkout at `../deepseek-harness` (override with `DESKTOP_DSH_REPO`); `DESKTOP_DSH_MODE=npm` switches to the bundled registry package. Smokes self-skip when their prerequisites are absent.
 
 ### Known patches
 
-`patches/` carries two patch-package patches, applied automatically by the postinstall hook after `npm ci`; a dsh upgrade that breaks either fails loudly at install time instead of silently regressing.
+`patches/` carries five patches declared as pnpm patchedDependencies, applied automatically by `pnpm install`; a dsh upgrade that breaks any of them fails loudly at install time instead of silently regressing.
 
-**Workspace picker (koffi)**: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`; `npm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child.
+**Brick-proof boot (dsh-app-boot)**: when a profile-declared bundle is missing on disk (the typical debris of an interrupted plugin update), dsh's loader throws during import and refuses to boot the whole tree. The patch downgrades a single bundle's resolution failure to skip + warning; together with the shell's pre-boot audit and crash self-healers, a broken plugin can no longer take the whole app down.
 
-**Console windows (windowsHide / SW_HIDE)**: the fix has two layers. First, dsh's subprocess execution — the agent tools' spawn, the process-tree taskkill, and the pnpm call for plugin installs — never set `windowsHide: true`; under the dsh CLI children inherit the caller's console, but DSH Desktop is a GUI process with no console to inherit, so every call popped a black terminal. Second, the Windows sandbox runner (restricted token) launches the actual command via native `CreateProcessAsUserW`, whose auto-created console window no node option controls — the patch hides it with `STARTF_USESHOWWINDOW|SW_HIDE` in STARTUPINFO. CREATE_NO_WINDOW/DETACHED_PROCESS were rejected: measured on the real chain, both make PowerShell (5.1 and 7 alike) swallow piped output when running console-less (cmd is unaffected). `npm run smoke:hideconsole` covers both layers: patch presence assertions, plus powershell runs through dsh's public subprocess API and the real ACL runner in a real `ELECTRON_RUN_AS_NODE` child, checking output collection and the terminate path.
+**Workspace picker (koffi)**: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`; `pnpm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child.
+
+**Console windows (windowsHide / SW_HIDE)**: the fix has two layers. First, dsh's subprocess execution — the agent tools' spawn, the process-tree taskkill, and the pnpm calls for plugin installs (including the CLI's plugin forwarder) — never set `windowsHide: true`; under the dsh CLI children inherit the caller's console, but DSH Desktop is a GUI process with no console to inherit, so every call popped a black terminal. The patch adds it at four sites (three in dsh-subprocess-local, one in dsh's plugin forwarder). Second, the Windows sandbox runner (restricted token) launches the actual command via native `CreateProcessAsUserW`, whose auto-created console window no node option controls — the patch hides it with `STARTF_USESHOWWINDOW|SW_HIDE` in STARTUPINFO. CREATE_NO_WINDOW/DETACHED_PROCESS were rejected: measured on the real chain, both make PowerShell (5.1 and 7 alike) swallow piped output when running console-less (cmd is unaffected). `pnpm run smoke:hideconsole` covers both layers: patch presence assertions, plus powershell runs through dsh's public subprocess API and the real ACL runner in a real `ELECTRON_RUN_AS_NODE` child, checking output collection and the terminate path.
 
 ### Project layout
 

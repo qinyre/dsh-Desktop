@@ -14,7 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.0--rc.7-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.0--rc.8-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
 
@@ -84,38 +84,40 @@ DSH Desktop 是一个 Electron 壳。启动时它通过 `ELECTRON_RUN_AS_NODE` �
 
 ## 开发
 
-前置条件：Node.js ≥ 22.19（或 ≥ 24）、npm。跑集成冒烟还需要一份上游源码的兄弟目录：
+前置条件：Node.js ≥ 22.19（或 ≥ 24）、pnpm（`corepack enable` 即得，版本由 packageManager 钉住）。跑集成冒烟还需要一份上游源码的兄弟目录：
 
 ```bash
 git clone https://github.com/qinyre/dsh-Desktop.git
 cd dsh-Desktop
 git clone https://github.com/deepseek-ai/deepseek-harness.git   # dev 模式 sidecar 来源
 cd deepseek-harness && pnpm install && pnpm run build && cd ..
-cd desktop && npm install
+cd desktop && pnpm install
 ```
 
 ```bash
-npm run dev            # 启动应用（dev 模式使用源码仓）
-npm test               # 单元测试
-npm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
-DSH_DESKTOP_PLUGIN_SMOKE=1 npm run smoke:market   # 干净 PATH 市场预装冒烟（Windows）
-npm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
-npm run smoke:hideconsole  # 子进程 windowsHide 补丁冒烟（Windows）
-npm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
-npm run dist           # 构建 NSIS 安装器
-npm run verify:bundle  # 打包产物自检：依赖闭包 + 隔离路径真实启动（发布前必跑）
-npm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/signing.md）
+pnpm run dev            # 启动应用（dev 模式使用源码仓）
+pnpm test               # 单元测试
+pnpm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
+DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # 干净 PATH 市场预装冒烟（Windows）
+pnpm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
+pnpm run smoke:hideconsole  # 子进程 windowsHide 补丁冒烟（Windows）
+pnpm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
+pnpm run dist           # 构建 NSIS 安装器
+pnpm run verify:bundle  # 打包产物自检：依赖闭包 + 隔离路径真实启动（发布前必跑）
+pnpm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/signing.md）
 ```
 
 dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_REPO` 覆盖）；`DESKTOP_DSH_MODE=npm` 切换到捆绑的 npm 包。冒烟在前置条件缺失时自动跳过。
 
 ### 已知补丁
 
-`patches/` 里有两个 patch-package 补丁，都由 postinstall 在 `npm ci` 之后自动应用；升级 dsh 使补丁失配时会在安装阶段报错，不会静默失效。
+`patches/` 里的五份补丁以 pnpm patchedDependencies 声明，`pnpm install` 时自动应用；升级 dsh 使补丁失配时会在安装阶段报错，不会静默失效。
 
-**目录选择器（koffi）**：dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会触发致命错误（`Error::New napi_get_last_error_info`，普通 Node 不受影响），打包版选择工作区文件夹后会报 "win32 folder dialog worker exited before reporting a result"。补丁将读取改为逐单元的 `koffi.decode()`；`npm run smoke:picker` 会在真实 `ELECTRON_RUN_AS_NODE` 子进程中验证。
+**启动永不砖（dsh-app-boot）**：profile 声明的 bundle 在磁盘上缺件时（插件更新被中途打断的典型残骸），dsh 的 loader 会在导入阶段抛错、整树拒绝启动。补丁把单个 bundle 的解析失败降级为跳过 + 告警，配合应用层的启动前审计与崩溃自愈器，坏掉的插件不再拖垮整个应用。
 
-**子进程黑窗（windowsHide / SW_HIDE）**：修复分两层。其一，dsh 的子进程执行——agent 工具的 spawn、进程树终止的 taskkill、插件安装的 pnpm 调用——都没设 `windowsHide: true`；在终端里跑 dsh 时子进程继承当前控制台无感，但 DSH Desktop 是 GUI 进程没有控制台可继承，每次调用都会弹黑色终端，补丁为三处补上。其二，Windows 沙箱运行器（受限令牌）用原生 `CreateProcessAsUserW` 拉起真正的命令，自动创建的控制台窗口不受 node 选项控制——补丁在 STARTUPINFO 里加 `STARTF_USESHOWWINDOW|SW_HIDE` 藏掉窗口。不用 CREATE_NO_WINDOW/DETACHED_PROCESS 的原因：实测二者会让 PowerShell（5.1 与 7 均是）在无控制台环境下吞掉管道输出（cmd 不受影响）。`npm run smoke:hideconsole` 覆盖两层：断言补丁在位，并在真实 `ELECTRON_RUN_AS_NODE` 子进程里经 dsh 公开的 subprocess API 与真实 ACL 运行器跑 powershell，验证输出收集与终止路径。
+**目录选择器（koffi）**：dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会触发致命错误（`Error::New napi_get_last_error_info`，普通 Node 不受影响），打包版选择工作区文件夹后会报 "win32 folder dialog worker exited before reporting a result"。补丁将读取改为逐单元的 `koffi.decode()`；`pnpm run smoke:picker` 会在真实 `ELECTRON_RUN_AS_NODE` 子进程中验证。
+
+**子进程黑窗（windowsHide / SW_HIDE）**：修复分两层。其一，dsh 的子进程执行——agent 工具的 spawn、进程树终止的 taskkill、插件安装的 pnpm 调用（含 CLI 的插件转发器）——都没设 `windowsHide: true`；在终端里跑 dsh 时子进程继承当前控制台无感，但 DSH Desktop 是 GUI 进程没有控制台可继承，每次调用都会弹黑色终端，补丁为四处补上（三处在 dsh-subprocess-local，一处在 dsh 的插件转发器）。其二，Windows 沙箱运行器（受限令牌）用原生 `CreateProcessAsUserW` 拉起真正的命令，自动创建的控制台窗口不受 node 选项控制——补丁在 STARTUPINFO 里加 `STARTF_USESHOWWINDOW|SW_HIDE` 藏掉窗口。不用 CREATE_NO_WINDOW/DETACHED_PROCESS 的原因：实测二者会让 PowerShell（5.1 与 7 均是）在无控制台环境下吞掉管道输出（cmd 不受影响）。`pnpm run smoke:hideconsole` 覆盖两层：断言补丁在位，并在真实 `ELECTRON_RUN_AS_NODE` 子进程里经 dsh 公开的 subprocess API 与真实 ACL 运行器跑 powershell，验证输出收集与终止路径。
 
 ### 目录结构
 
