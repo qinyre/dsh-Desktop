@@ -7,6 +7,13 @@ contextBridge.exposeInMainWorld('dshDesktop', {
   retry: (): void => { ipcRenderer.send('dsh:retry') },
   openLogs: (): void => { ipcRenderer.send('dsh:open-logs') },
   restartSidecar: (): void => { ipcRenderer.send('dsh:restart-sidecar') },
+  // 状态页活动文本（预装进度等）：先拉当前值（覆盖页面加载前的推送窗口），再订阅后续变化。
+  onActivity: (callback: (text: string) => void): void => {
+    void ipcRenderer.invoke('dsh:get-activity').then((current) => {
+      if (typeof current === 'string' && current !== '') callback(current)
+    }).catch(() => { /* 主进程侧 handle 未就绪：只损失初始拉取，推送仍在 */ })
+    ipcRenderer.on('dsh:activity', (_event, text: string) => callback(text))
+  },
 })
 
 // 标题栏跟随主题（仅 dsh 页；状态页由主进程固定配色）：上报页面实际背景色。

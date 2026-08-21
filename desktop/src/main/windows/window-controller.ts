@@ -13,6 +13,9 @@ export class WindowController {
   private win: BrowserWindow | undefined
   private port: number | undefined
   private lastBarColor = ''
+  /** 状态页当前展示的活动文本；dsh 页加载后不再推送（页面没有消费元素）。 */
+  private activity = ''
+  private showingStatus = true
   private readonly store: WindowStateStore
 
   constructor(private readonly opts: {
@@ -70,11 +73,13 @@ export class WindowController {
   loadDsh(port: number): void {
     // 端口每次重启都会变（设计书 §4）：总是 loadURL 新地址，不做 reload。
     this.port = port
+    this.showingStatus = false
     void this.win?.loadURL(`http://127.0.0.1:${port}`)
   }
 
   showStatus(kind: 'launching' | 'failed', detail?: string): void {
     this.port = kind === 'failed' ? undefined : this.port
+    this.showingStatus = true
     // 状态页自己接管标题栏配色（dsh 页可能已按其主题改过）。
     this.setTitleBarColor(STATUS_BAR_COLOR)
     const query = { kind: kind === 'failed' ? 'failed' : 'launching', detail: detail ?? '' }
@@ -95,6 +100,19 @@ export class WindowController {
     if (win.isMinimized()) win.restore()
     win.show()
     win.focus()
+  }
+
+  /**
+   * 状态页的活动文本（预装进度等）：记下当前值供页面加载后拉取，且仅在状态页
+   * 在场时推送——dsh 页共用同一 preload，没有消费元素，推过去是噪音。
+   */
+  showActivity(text: string): void {
+    this.activity = text
+    if (this.showingStatus) this.win?.webContents.send('dsh:activity', text)
+  }
+
+  getActivity(): string {
+    return this.activity
   }
 
   /**
