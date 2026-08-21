@@ -34,8 +34,11 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 动态 require 在 ESM 产物里导入即崩），verify-bundle 补上 node 半边导入自检。
  * 0.3.2 起：打开安装页自动检查一次更新（非强制，吃服务端 30 分钟 TTL 缓存），
  * 可更新提示与「更新」按钮无需再手动点「检查更新」才出现。
+ * 0.3.3 起：安装命令链自带 windowsHide——独立 dsh 的运行时没有桌面的防弹窗
+ * 补丁层，装插件时 cmd shim 链（安装器拉 dsh、转发器拉 pnpm）会在无控制台
+ * 宿主下各弹一个 cmd 窗；第一层隐藏后整条子链继承，桌面端该 flag 为冗余但无害。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.2'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.3'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
