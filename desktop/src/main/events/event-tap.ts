@@ -3,15 +3,18 @@ import type { SidecarEvents } from '../sidecar/sidecar-manager'
 import { InteractionDedup } from './dedup'
 import { parseServerRequest } from './frame'
 import { RunningEdge } from './running-edge'
+import { ReconnectBackoff } from './reconnect-backoff'
 import { shouldNotify } from './notify-gating'
 
 /**
  * 通知水龙头（设计书 §6）：两条只下行 WS；不发送任何帧（协议违规会被服务端 1008 关闭）。
- * ready 才连，非 ready 即断；重连指向新端口。
+ * ready 才连，非 ready 即断；重连指向新端口。重连间隔走退避（reconnect-backoff），
+ * 双流都重新 open 或换端口新一轮时复位。
  */
 export class EventTap {
   private readonly dedup = new InteractionDedup()
   private readonly edge = new RunningEdge()
+  private readonly backoff = new ReconnectBackoff()
   private sockets: WebSocket[] = []
   private generation = 0
   private port: number | undefined
@@ -25,7 +28,10 @@ export class EventTap {
   attach(sidecar: {
     on<K extends keyof SidecarEvents>(event: K, listener: (payload: Parameters<SidecarEvents[K]>[0]) => void): unknown
   }): void {
-    sidecar.on('ready', (port) => this.connect(port))
+    sidecar.on('ready', (port) => {
+      this.backoff.reset() // 换端口是新一轮生命周期，退避从头计
+      this.connect(port)
+    })
     sidecar.on('statechange', (state) => { if (state !== 'ready') this.disconnect() })
   }
 
@@ -35,6 +41,10 @@ export class EventTap {
     const generation = ++this.generation
     for (const path of ['/api/events.mux', '/api/events.host']) {
       const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`)
+      socket.addEventListener('open', () => {
+        if (generation !== this.generation) return // 换代后的迟到 open 不计入恢复
+        this.backoff.socketOpened()
+      })
       socket.addEventListener('message', (event) => this.handle(String(event.data)))
       // error 后必有 close；重连统一由 close 收口（EventTarget 语义下未监听的 error 不抛，
       // 但显式挂空监听可防未来实现差异，也让意图可见）。
@@ -45,7 +55,7 @@ export class EventTap {
         this.sockets = []
         this.reconnectTimer = setTimeout(() => {
           if (!this.closed && this.port !== undefined) this.connect(this.port)
-        }, 2000)
+        }, this.backoff.nextDelayMs())
       })
       this.sockets.push(socket)
     }
