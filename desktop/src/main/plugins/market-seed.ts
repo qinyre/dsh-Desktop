@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
+import { parse, parseDocument, YAMLMap, YAMLSeq } from 'yaml'
 import { resolveRuntime, type RuntimeMode } from '../sidecar/runtime-resolver'
 
 /** 预装的市场版本：只在预装时钉住，市场自身可在设置页走更新通道升级。 */
@@ -107,9 +108,10 @@ export function atlasSeeded(dshHome: string | undefined): boolean {
 }
 
 /**
- * 经 dsh CLI 预装一个 bundle，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile
+ * 经 dsh CLI 预装 bundle，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile
  * 尚不存在）与 reconcile（把声明 bundle 的依赖写回 dsh.profile.bundles）。命令形态与
  * sidecar 完全一致（resolveRuntime），市场的 dshArgv() 在运行期重调 CLI 时也依赖同一形态。
+ * `add` 后的 spec 原样透传 pnpm，多 spec 即一次安装（上游 args.ts 不截参数）。
  */
 export async function seedBundle(opts: {
   mode: RuntimeMode
@@ -117,12 +119,12 @@ export async function seedBundle(opts: {
   repoRoot: string
   env: NodeJS.ProcessEnv
   resolve?: (id: string) => string
-  spec: string
+  specs: readonly string[]
   onOutput?: (line: string) => void
 }): Promise<number> {
   const { command, args, cwd } = resolveRuntime({
     mode: opts.mode, execPath: opts.execPath, repoRoot: opts.repoRoot, resolve: opts.resolve,
-    dshArgs: ['plugin', '--profile', 'web', 'add', opts.spec],
+    dshArgs: ['plugin', '--profile', 'web', 'add', ...opts.specs],
   })
   const child = spawn(command, args, { cwd: cwd ?? process.cwd(), env: opts.env, stdio: ['ignore', 'pipe', 'pipe'] })
   for (const stream of [child.stdout, child.stderr]) {
@@ -135,56 +137,50 @@ export async function seedBundle(opts: {
   })
 }
 
-/** 预装插件市场（dshmarket）。 */
-export async function seedDshmarket(opts: {
-  mode: RuntimeMode
-  execPath: string
-  repoRoot: string
-  env: NodeJS.ProcessEnv
-  resolve?: (id: string) => string
-  spec?: string
-  onOutput?: (line: string) => void
-}): Promise<number> {
-  return seedBundle({ ...opts, spec: opts.spec ?? DSHMARKET_SPEC })
+/** 一个预装位：name/spec 供日志与进度，seeded 为调用时的就位检查，装好后回调 onSeeded。 */
+export interface SeedStep {
+  name: string
+  spec: string
+  seeded: boolean
+  onSeeded?: () => void
 }
 
-/** 预装插件安装器（dsh-plugin-install，设置页的「安装」Tab）。 */
-export async function seedInstaller(opts: {
-  mode: RuntimeMode
-  execPath: string
-  repoRoot: string
-  env: NodeJS.ProcessEnv
-  resolve?: (id: string) => string
-  spec?: string
-  onOutput?: (line: string) => void
-}): Promise<number> {
-  return seedBundle({ ...opts, spec: opts.spec ?? INSTALLER_SPEC })
-}
-
-/** 预装能力管理插件（dsh-plugin-capabilities，设置页的「技能」「MCP」Tab）。 */
-export async function seedCapabilities(opts: {
-  mode: RuntimeMode
-  execPath: string
-  repoRoot: string
-  env: NodeJS.ProcessEnv
-  resolve?: (id: string) => string
-  spec?: string
-  onOutput?: (line: string) => void
-}): Promise<number> {
-  return seedBundle({ ...opts, spec: opts.spec ?? CAPABILITIES_SPEC })
-}
-
-/** 预装归档与刻度尺插件（dsh-plugin-atlas，「已归档会话」面板 + 对话刻度尺）。 */
-export async function seedAtlas(opts: {
-  mode: RuntimeMode
-  execPath: string
-  repoRoot: string
-  env: NodeJS.ProcessEnv
-  resolve?: (id: string) => string
-  spec?: string
-  onOutput?: (line: string) => void
-}): Promise<number> {
-  return seedBundle({ ...opts, spec: opts.spec ?? ATLAS_SPEC })
+/**
+ * 预装编排：把未就位的插件合并成一次 `dsh plugin add`——一次 CLI 引导 + 一次 pnpm
+ * 安装 + 一次 reconcile，替代旧的四次串行全链引导。pnpm 的多 spec add 是原子的：
+ * 一个 spec 解析失败会拖垮整批，所以批量失败时回退逐个安装，保住健康的 spec
+ * （与旧的逐个预装行为对齐）。已就位的一律跳过；单个失败不重试，留给下次启动。
+ */
+export async function seedPendingPlugins(opts: {
+  steps: readonly SeedStep[]
+  run: (specs: string[]) => Promise<number>
+  log?: (line: string) => void
+  onProgress?: (progress: { phase: 'batch' | 'step'; current: string; done: number; total: number }) => void
+}): Promise<void> {
+  const missing = opts.steps.filter((step) => !step.seeded)
+  if (missing.length === 0) return
+  const specs = missing.map((step) => step.spec)
+  const total = missing.length
+  opts.log?.(`seeding plugins: ${specs.join(', ')}`)
+  opts.onProgress?.({ phase: 'batch', current: specs.join(', '), done: 0, total })
+  const code = await opts.run(specs)
+  if (code === 0) {
+    for (const step of missing) step.onSeeded?.()
+    return
+  }
+  if (total === 1) {
+    opts.log?.(`${missing[0]!.name} seed failed (exit ${code}); retrying next launch`)
+    return
+  }
+  opts.log?.(`batched seed failed (exit ${code}); falling back to one-by-one`)
+  for (const [index, step] of missing.entries()) {
+    opts.onProgress?.({ phase: 'step', current: step.spec, done: index + 1, total })
+    if (await opts.run([step.spec]) === 0) {
+      step.onSeeded?.()
+    } else {
+      opts.log?.(`${step.name} seed failed; retrying next launch`)
+    }
+  }
 }
 
 /** 市场行 id（其自带 cordis.patch.yml 的 insert id），配置覆盖以此为目标。 */
@@ -194,20 +190,47 @@ const MARKET_ENTRY_ID = 'dsh-market'
  * 在 profile 自有 patch 层追加市场配置覆盖：关掉自重启。市场的 scheduleRestart 会经
  * 脱管 helper spawn 替代 dsh 进程再退出自身——在桌面应用的 sidecar 监督下这会留下一个
  * 无人认领的进程并触发监督器重生（双进程）；重启由应用层（sidecar.restart）负责。
- * 上游模板以空 flow 序列 `[]` 占位，须摘掉才能追加块序列项。
+ *
+ * 改层必须走 YAML 文档树、整层重渲染为 block 风格：dsh 自己会往层里写 flow 式行
+ * （MCP 配置），行级拼接会在 flow 根后追加 block 行产出非法 YAML（installer 0.3.0
+ * 事故的同款坑）。解析失败的层直接抛错且不落盘——写前先验证产物可解析，绝不写坏层。
  */
 export function applyMarketConfig(profileDir: string): void {
   const patchPath = join(profileDir, 'cordis.patch.yml')
   const content = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
-  if (new RegExp(`^-\\s+id:\\s*'?${MARKET_ENTRY_ID}'?\\s*$`, 'm').test(content)) return
-  const stripped = content.replace(/^\s*\[\]\s*$/m, '').trimEnd()
-  const block = [
-    '',
-    '# dsh-desktop: 市场的自重启会在应用监督外 spawn 替代进程，重启交由应用层负责。',
-    `- id: ${MARKET_ENTRY_ID}`,
-    '  config:',
-    '    allowRestart: false',
-    '',
-  ].join('\n')
-  writeFileSync(patchPath, stripped + block, 'utf8')
+  const doc = parseDocument(content)
+  if (doc.errors.length > 0) {
+    throw new Error(`cordis.patch.yml does not parse: ${doc.errors[0]?.message ?? String(doc.errors[0])}`)
+  }
+  if (doc.contents !== null && !(doc.contents instanceof YAMLSeq)) {
+    throw new Error('cordis.patch.yml: root is not a list of patch rows')
+  }
+  // 新建节点没有 source range，塞不进 ParsedNode 型的 contents，与 installer 同款 as never。
+  const seq: YAMLSeq = doc.contents instanceof YAMLSeq ? doc.contents : new YAMLSeq() as never
+  if (doc.contents === null) doc.contents = seq as never
+  for (const item of seq.items) {
+    if (item instanceof YAMLMap && item.get('id') === MARKET_ENTRY_ID) return
+  }
+  const config = new YAMLMap()
+  config.set('allowRestart', false)
+  const row = new YAMLMap()
+  row.set('id', MARKET_ENTRY_ID)
+  row.set('config', config)
+  row.commentBefore = ' dsh-desktop: 市场的自重启会在应用监督外 spawn 替代进程，重启交由应用层负责。'
+  seq.items.push(row)
+  setBlockStyle(seq)
+  const next = doc.toString({ lineWidth: 0 })
+  parse(next) // 写前自检：live watcher 与下次启动都对这个文件 fail loud，绝不落盘可能解析失败的层
+  writeFileSync(patchPath, next, 'utf8')
+}
+
+/** 渲染为 block 风格（flow 根无法接 block 追加）；标量值按需重新引号。 */
+function setBlockStyle(node: unknown): void {
+  if (node instanceof YAMLMap) {
+    node.flow = false
+    for (const pair of node.items) setBlockStyle(pair.value)
+  } else if (node instanceof YAMLSeq) {
+    node.flow = false
+    for (const item of node.items) setBlockStyle(item)
+  }
 }

@@ -47,7 +47,8 @@
     "@deepseek-ai/dsh-workflow": "^0.1.0-rc.8",
     "electron-updater": "^6.8.9",
     "koffi": "^3.1.5",
-    "pnpm": "10.34.5"
+    "pnpm": "10.34.5",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",

@@ -90,6 +90,9 @@ importers:
       pnpm:
         specifier: 10.34.5
         version: 10.34.5
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@electron-toolkit/tsconfig':
         specifier: ^2.0.0

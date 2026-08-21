@@ -10,7 +10,7 @@ import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
-import { applyMarketConfig, atlasSeeded, ATLAS_SPEC, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedAtlas, seedBundle, seedCapabilities, seedDshmarket, seedInstaller } from './plugins/market-seed'
+import { applyMarketConfig, atlasSeeded, ATLAS_SPEC, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedBundle, seedPendingPlugins } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
@@ -67,6 +67,8 @@ if (!gotLock) {
     })
     const win = windows.createMainWindow()
     if (!app.isPackaged) win.webContents.openDevTools({ mode: 'detach' })
+    // 状态页活动文本：拉（页面加载后取当前值，覆盖加载前的推送窗口）+ 推（后续变化）。
+    ipcMain.handle('dsh:get-activity', () => windows?.getActivity() ?? '')
     // 零配置桥（设计书 §7 演进：第三方插件管理移交 dshmarket 插件）：shim 目录前置进
     // sidecar PATH——dsh CLI 与市场重调的 CLI 子进程都靠它在无 Node 机器上找到 pnpm。
     const shimDir = join(paths.userDataDir, 'bin')
@@ -104,66 +106,50 @@ if (!gotLock) {
     // 按 profile 依赖规格重跑 add（实测幂等）；失败不阻断启动，loader 补丁会把
     // 缺件 bundle 降级为跳过 + 告警。健康时开销仅为一次清单读取 + 若干 exists。
     if (paths.dshHome !== undefined) {
+      windows?.showActivity('正在检查插件完整性…')
       const repaired = await auditProfileBundles({
         readManifest: () => { try { return readFileSync(join(paths.dshHome!, 'profiles', 'web', 'package.json'), 'utf8') } catch { return null } },
         bundleIntact: (name) => existsSync(join(paths.dshHome!, 'profiles', 'web', 'node_modules', name, 'package.json')),
         repair: (_name, spec) => seedBundle({
           mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
-          env: sidecarEnv, spec, onOutput: (line) => { logger.appendLine(line) },
+          env: sidecarEnv, specs: [spec], onOutput: (line) => { logger.appendLine(line) },
         }),
         log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
       })
       if (repaired.length > 0) logger.appendLine(`[dsh-desktop] pre-boot bundle audit repaired: ${repaired.join(', ')}`)
     }
-    // 预装插件市场（仅打包模式：dev 不动用户的真实 DSH_HOME）。经 dsh CLI 安装，首启时
-    // profile 尚不存在也成立（CLI 自带初始化 + reconcile）；失败不阻断启动，下次再试。
-    if (paths.dshHome !== undefined && !marketSeeded(paths.dshHome)) {
-      logger.appendLine(`[dsh-desktop] seeding plugin market (${DSHMARKET_SPEC})`)
-      const code = await seedDshmarket({
-        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
-        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
+    // 预装四个自带插件（仅打包模式：dev 不动用户的真实 DSH_HOME）。经 dsh CLI 安装，
+    // 首启时 profile 尚不存在也成立（CLI 自带初始化 + reconcile）；未就位的合并成
+    // 一次 CLI 调用安装（seedPendingPlugins：批量失败回退逐个）。失败不阻断启动，
+    // 下次再试。市场装好后关掉其脱管自重启（applyMarketConfig）。
+    if (paths.dshHome !== undefined) {
+      const profileDir = join(paths.dshHome, 'profiles', 'web')
+      await seedPendingPlugins({
+        steps: [
+          {
+            name: 'dshmarket', spec: DSHMARKET_SPEC, seeded: marketSeeded(paths.dshHome),
+            onSeeded: () => {
+              try {
+                applyMarketConfig(profileDir)
+              } catch (error) {
+                // 覆盖写不进去只损失市场的自重启开关（重启仍走托盘/安装页按钮），不值得赔上启动链。
+                logger.appendLine(`[dsh-desktop] market config override failed: ${String(error)}`)
+              }
+            },
+          },
+          { name: 'dsh-plugin-install', spec: INSTALLER_SPEC, seeded: installerSeeded(paths.dshHome) },
+          { name: 'dsh-plugin-capabilities', spec: CAPABILITIES_SPEC, seeded: capabilitiesSeeded(paths.dshHome) },
+          { name: 'dsh-plugin-atlas', spec: ATLAS_SPEC, seeded: atlasSeeded(paths.dshHome) },
+        ],
+        run: (specs) => seedBundle({
+          mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+          env: sidecarEnv, specs, onOutput: (line) => { logger.appendLine(line) },
+        }),
+        log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
+        onProgress: ({ phase, current, done, total }) => {
+          windows?.showActivity(phase === 'batch' ? `正在预装插件：${current}` : `正在预装插件 (${done}/${total})：${current}`)
+        },
       })
-      if (code === 0) {
-        applyMarketConfig(join(paths.dshHome, 'profiles', 'web'))
-      } else {
-        logger.appendLine(`[dsh-desktop] market seed failed (exit ${code}); retrying next launch`)
-      }
-    }
-    // 预装插件安装器（设置页「安装」Tab，qinyre/dsh-plugin-install）。无需配置覆盖：
-    // 桌面模式下其重启按钮经 dsh:restart-sidecar IPC 交回壳层，没有脱管自重启。
-    if (paths.dshHome !== undefined && !installerSeeded(paths.dshHome)) {
-      logger.appendLine(`[dsh-desktop] seeding plugin installer (${INSTALLER_SPEC})`)
-      const code = await seedInstaller({
-        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
-        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
-      })
-      if (code !== 0) {
-        logger.appendLine(`[dsh-desktop] installer seed failed (exit ${code}); retrying next launch`)
-      }
-    }
-    // 预装能力管理插件（设置页一级分区「技能与 MCP」，qinyre/dsh-plugin-capabilities）。
-    // 同样无需配置覆盖：待重启横幅经 dsh:restart-sidecar IPC 交回壳层。
-    if (paths.dshHome !== undefined && !capabilitiesSeeded(paths.dshHome)) {
-      logger.appendLine(`[dsh-desktop] seeding capabilities plugin (${CAPABILITIES_SPEC})`)
-      const code = await seedCapabilities({
-        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
-        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
-      })
-      if (code !== 0) {
-        logger.appendLine(`[dsh-desktop] capabilities seed failed (exit ${code}); retrying next launch`)
-      }
-    }
-    // 预装归档与刻度尺插件（qinyre/dsh-plugin-atlas，「已归档会话」面板 + 对话刻度尺）。
-    // 纯路由与 UI 扩展，无重启路径，无需配置覆盖。
-    if (paths.dshHome !== undefined && !atlasSeeded(paths.dshHome)) {
-      logger.appendLine(`[dsh-desktop] seeding atlas plugin (${ATLAS_SPEC})`)
-      const code = await seedAtlas({
-        mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
-        env: sidecarEnv, onOutput: (line) => { logger.appendLine(line) },
-      })
-      if (code !== 0) {
-        logger.appendLine(`[dsh-desktop] atlas seed failed (exit ${code}); retrying next launch`)
-      }
     }
     sidecar = new SidecarManager({
       // rc.8 起 dsh web 在非 SSH 环境默认把就绪 URL 交给系统默认浏览器；桌面壳自带
@@ -202,7 +188,7 @@ if (!gotLock) {
       readManifest: () => { try { return readFileSync(join(paths.dshHome!, 'profiles', 'web', 'package.json'), 'utf8') } catch { return null } },
       repair: (_name, spec) => seedBundle({
         mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
-        env: sidecarEnv, spec, onOutput: (line) => { logger.appendLine(line) },
+        env: sidecarEnv, specs: [spec], onOutput: (line) => { logger.appendLine(line) },
       }),
       log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
       onRepaired: () => { if (sidecar?.state === 'failed') void sidecar.restart() },
@@ -218,6 +204,7 @@ if (!gotLock) {
     }
     sidecar.on('statechange', (state) => {
       if (state === 'spawning' || state === 'crashed') windows?.showStatus('launching')
+      if (state === 'spawning') windows?.showActivity('正在启动 dsh 服务…')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
       if (state === 'crashed' || state === 'failed') {
         runHealer('skin heal', () => healSkins())

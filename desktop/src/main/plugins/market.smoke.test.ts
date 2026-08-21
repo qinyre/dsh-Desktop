@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildSidecarEnv, resolveAppPaths } from '../app-paths'
 import { ensurePnpmShim } from './pnpm-shim'
-import { applyMarketConfig, marketSeeded, seedDshmarket } from './market-seed'
+import { applyMarketConfig, marketSeeded, seedBundle } from './market-seed'
 
 // market seed smoke：无系统 Node/pnpm 的干净 PATH 下，经真实 dsh CLI 预装插件市场。
 // 用本地 file: 目录扮演 "dshmarket" 包（同名即可命中 bundles 收录），避免网络抖动；
@@ -38,10 +38,10 @@ describe.skipIf(process.env.DSH_DESKTOP_PLUGIN_SMOKE !== '1' || !nodeOk || proce
     const paths = resolveAppPaths({ packaged: true, env: {}, userDataDir: root, repoRoot: '' })
     const env = buildSidecarEnv(paths, { PATH: 'C:\\Windows\\System32' }, { shimDir })
     const lines: string[] = []
-    const code = await seedDshmarket({
+    const code = await seedBundle({
       mode: 'source', execPath: process.execPath,
       repoRoot: join(__dirname, '..', '..', '..', '..', 'deepseek-harness'),
-      env, spec: `file:${fakeMarket}`, onOutput: (line) => lines.push(line),
+      env, specs: [`file:${fakeMarket}`], onOutput: (line) => lines.push(line),
     })
     if (code !== 0) console.log('--- market seed output ---\n' + lines.join('\n'))
     expect(code).toBe(0)
