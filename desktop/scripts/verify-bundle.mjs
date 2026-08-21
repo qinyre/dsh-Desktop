@@ -22,7 +22,7 @@ let failed = false
 const fail = (msg) => { console.error(`FAIL ${msg}`); failed = true }
 
 if (!existsSync(scopedRoot)) {
-  fail(`bundle not found: ${scopedRoot}（先 npm run dist）`)
+  fail(`bundle not found: ${scopedRoot}（先 pnpm run dist）`)
   process.exit(1)
 }
 

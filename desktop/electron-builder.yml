@@ -9,6 +9,11 @@ files:
 # ELECTRON_RUN_AS_NODE 的子进程读不了 asar：dsh 及其依赖、pnpm 必须解包到真实磁盘（设计书 §10）。
 asarUnpack:
   - node_modules/**
+# Chromium 自带 55 种语言包共 ~47MB；Web UI 有自己的 i18n（跟随系统 locale），壳层
+# 只留中英两种，其余语言的原生界面字符串回退英文。
+electronLanguages:
+  - en-US
+  - zh-CN
 # 跳过 @electron/rebuild：本机无 VS 工具链，且唯一的原生依赖 node-pty 1.1.0 自带
 # prebuilds/win32-x64（已验证可在 Electron-as-Node ABI 148 下加载并 spawn），
 # 无需针对 Electron 头文件重编。
