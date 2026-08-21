@@ -32,8 +32,10 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * （停用看似无效）、下次启动直接解析报错。0.3.0 写坏的层会被自动修复且保留
  * 全部停用状态；node 产物带 createRequire banner（内联的 yaml 包是 CJS，
  * 动态 require 在 ESM 产物里导入即崩），verify-bundle 补上 node 半边导入自检。
+ * 0.3.2 起：打开安装页自动检查一次更新（非强制，吃服务端 30 分钟 TTL 缓存），
+ * 可更新提示与「更新」按钮无需再手动点「检查更新」才出现。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.1'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.2'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
