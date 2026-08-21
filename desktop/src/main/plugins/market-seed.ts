@@ -37,8 +37,11 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 0.3.3 起：安装命令链自带 windowsHide——独立 dsh 的运行时没有桌面的防弹窗
  * 补丁层，装插件时 cmd shim 链（安装器拉 dsh、转发器拉 pnpm）会在无控制台
  * 宿主下各弹一个 cmd 窗；第一层隐藏后整条子链继承，桌面端该 flag 为冗余但无害。
+ * 0.3.4 起：自重启感知终端——从交互终端启动的 dsh 重启后新进程接管原终端
+ * （同一窗口、Ctrl+C 照常可杀），不再脱逃成隐藏孤儿；管道宿主（桌面 sidecar）
+ * 仍走原分离路径。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.3'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.4'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
