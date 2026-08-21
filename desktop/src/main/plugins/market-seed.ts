@@ -44,11 +44,13 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 0.3.5 起：重启落地方式改为专属控制台窗口——实测本机进程管控会在父进程退出
  * 时连带杀死一切非分离子进程（纯净环境验证，与 dsh 无关），任何「由旧进程派生
  * 并依赖其存活」的接管方案都必然随旧进程陪葬；故 relay 回归分离（等旧进程真正
- * 释放端口后再拉起，重 profile 的 dispose 时长不再构成竞态），successor 落在
- * 标题为「dsh web」的独立窗口里，终止它就在该窗口 Ctrl+C 或直接关窗；管道
- * 宿主维持隐藏分离路径不变。
+ * 释放端口后再拉起，重 profile 的 dispose 时长不再构成竞态）。
+ * 0.3.7 起：重启回到原终端——relay 以 stdio inherit 接住旧进程的控制台句柄，
+ * successor 由 relay（而非旧进程）以分离+inherit 拉起：分离躲开父退出的连带
+ * 击杀，句柄直通原窗口，不再新开终端；successor 未附加控制台，Ctrl+C 归宿是
+ * 等待中的 shell，关窗或杀 pid 才能停它；管道宿主维持隐藏分离路径不变。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.6'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.7'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
