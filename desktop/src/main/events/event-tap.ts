@@ -2,19 +2,29 @@ import { BrowserWindow, Notification } from 'electron'
 import type { SidecarEvents } from '../sidecar/sidecar-manager'
 import { InteractionDedup } from './dedup'
 import { parseServerRequest } from './frame'
-import { RunningEdge } from './running-edge'
+import { NotifyCooldown } from './notify-cooldown'
 import { ReconnectBackoff } from './reconnect-backoff'
+import { lastAssistantText, summarizeReply } from './reply-summary'
+import { RunningEdge } from './running-edge'
 import { shouldNotify } from './notify-gating'
 
 /**
  * 通知水龙头（设计书 §6）：两条只下行 WS；不发送任何帧（协议违规会被服务端 1008 关闭）。
  * ready 才连，非 ready 即断；重连指向新端口。重连间隔走退避（reconnect-backoff），
  * 双流都重新 open 或换端口新一轮时复位。
+ *
+ * 回合完成通知（host/session-status 的 true→false 边沿）做一次内容增强：标题用
+ * 会话名、正文用最后一条 agent 回复的摘要。会话名来自 mux 广播的 session/projection
+ * （key==='title'，投影帧对所有连接广播、无需订阅）；正文在边沿时刻经
+ * POST /api/session.history 现查（信封与浏览器载体一致：client-request + 单段端点名）。
+ * 任一环节拿不到都回退通用文案，链路本身不抛错。
  */
 export class EventTap {
   private readonly dedup = new InteractionDedup()
   private readonly edge = new RunningEdge()
   private readonly backoff = new ReconnectBackoff()
+  private readonly cooldown = new NotifyCooldown()
+  private readonly titles = new Map<string, string>()
   private sockets: WebSocket[] = []
   private generation = 0
   private port: number | undefined
@@ -81,6 +91,15 @@ export class EventTap {
       this.dedup.resolve(frame)
       return
     }
+    if (type === 'session/projection') {
+      this.rememberTitle(frame.payload)
+      return
+    }
+    if (type === 'host/session-removed') {
+      const removed = frame.payload.sessionId
+      if (typeof removed === 'string') this.titles.delete(removed)
+      return
+    }
     let title: string | undefined
     if (type === 'approval/requested' || type === 'question/requested') {
       if (this.dedup.seen(frame)) return
@@ -88,7 +107,8 @@ export class EventTap {
     } else if (type === 'host/session-status') {
       const sessionId = this.edge.update(frame)
       if (sessionId === undefined) return
-      title = '回合完成'
+      void this.notifyTurnComplete(sessionId)
+      return
     } else {
       return
     }
@@ -97,5 +117,66 @@ export class EventTap {
     const notification = new Notification({ title, body: '点击返回 DSH Desktop' })
     notification.on('click', () => this.opts.getMainWindow()?.focus())
     notification.show()
+  }
+
+  /** 缓存 mux 广播的会话标题投影（key==='title'，string|null；null=清除）。 */
+  private rememberTitle(payload: Record<string, unknown>): void {
+    const sessionId = payload.sessionId
+    if (payload.key !== 'title' || typeof sessionId !== 'string') return
+    const value = payload.value
+    if (typeof value === 'string' && value.trim() !== '') this.titles.set(sessionId, value)
+    else if (value === null) this.titles.delete(sessionId)
+  }
+
+  /**
+   * 回合完成通知：可见性门控 → 每会话冷却 → 内容增强。门控在前——窗口可见时
+   * 直接返回且不消耗冷却，用户回到窗口后离开的下一条通知不受上一次静默影响。
+   */
+  private async notifyTurnComplete(sessionId: string): Promise<void> {
+    const win = this.opts.getMainWindow()
+    if (!shouldNotify(win?.isVisible() ?? false, win?.isFocused() ?? false)) return
+    if (!this.cooldown.allow(sessionId)) return
+    const title = this.titles.get(sessionId) ?? '回合完成'
+    const reply = await this.fetchLastReply(sessionId)
+    const notification = new Notification({
+      title,
+      body: reply !== undefined ? summarizeReply(reply) : '点击返回 DSH Desktop',
+    })
+    notification.on('click', () => this.opts.getMainWindow()?.focus())
+    notification.show()
+  }
+
+  /** 边沿瞬间末条消息可能尚未投影完：为空时短延迟重试一次。 */
+  private async fetchLastReply(sessionId: string): Promise<string | undefined> {
+    const first = await this.fetchReplyOnce(sessionId)
+    if (first !== undefined) return first
+    await new Promise(resolve => { setTimeout(resolve, 400) })
+    return this.fetchReplyOnce(sessionId)
+  }
+
+  /** 经 /api 一元 RPC 拉该会话的事件页并折叠最后一条回复；任何失败都吞掉返回 undefined。 */
+  private async fetchReplyOnce(sessionId: string): Promise<string | undefined> {
+    if (this.port === undefined) return undefined
+    try {
+      const response = await fetch(`http://127.0.0.1:${this.port}/api/session.history`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'client-request',
+          rpcId: crypto.randomUUID(),
+          method: 'session.history',
+          payload: { sessionId },
+        }),
+        signal: AbortSignal.timeout(4000),
+      })
+      if (!response.ok) return undefined
+      // 响应信封：{rpcId, result:{ok:true,value:{events}}|{ok:false,...}}
+      const full = await response.json() as { result?: { ok?: unknown; value?: { events?: unknown } } }
+      const result = full.result
+      if (result === undefined || result.ok !== true || result.value === undefined) return undefined
+      return lastAssistantText(result.value.events)
+    } catch {
+      return undefined
+    }
   }
 }
