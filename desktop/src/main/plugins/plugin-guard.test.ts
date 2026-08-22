@@ -201,4 +201,98 @@ describe('PluginGuard', () => {
     expect(() => guard.considerCrash({ terminal: false })).not.toThrow()
     expect(logs.some(l => l.includes('config-corrupt'))).toBe(true)
   })
+
+  it('preBoot pre-quarantines rows of tracked bundles whose entry file is missing', () => {
+    const home = join(root, 'broken-entry')
+    // 残缺包：声明 main 但 dist/index.js 不存在；patch 行 name 与包名一致（必炸行）。
+    const dir = join(home, 'profiles', 'web', 'node_modules', 'p-broken')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'p-broken', version: '0.0.1', main: 'dist/index.js', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+    writeFileSync(join(dir, 'cordis.patch.yml'), '- insert:\n  - id: e-broken\n    name: p-broken\n')
+    // 同 bundle patch 内 name 不同的行：不预隔离（非必然受害）。
+    writeFileSync(join(dir, 'cordis.patch.yml'), '- insert:\n  - id: e-broken\n    name: p-broken\n  - id: e-bystander\n    name: some-other-module\n')
+    writeBundle(home, 'p-ok', '- insert:\n  - id: e-ok\n    name: p-ok\n')
+    writeManifest(home, ['p-broken', 'p-ok'], ['p-broken', 'p-ok'])
+    const { guard } = makeGuard(home)
+    guard.preBoot()
+    const disabled = disabledEntryIds({ dshHome: home })
+    expect(disabled.has('e-broken')).toBe(true)
+    expect(disabled.has('e-bystander')).toBe(false)
+    expect(disabled.has('e-ok')).toBe(false)
+    expect(guard.findings().some(f => f.bundle === 'p-broken' && f.category === 'dependency-missing')).toBe(true)
+  })
+
+  it('safe mode engages after two unproductive empty-diagnosis crashes and stays one-shot', () => {
+    const home = join(root, 'safemode')
+    writeBundle(home, 'mock-good', '- insert:\n  - id: mock-good\n    name: mock-good\n')
+    writeBundle(home, 'mock-bad', '- insert:\n  - id: mock-bad\n    name: mock-bad\n')
+    // 模板 bundle（不在 dependencies）：安全模式绝不停用。
+    writeBundle(home, 'tpl-core', '- insert:\n  - id: e-core\n    name: tpl-core\n')
+    writeManifest(home, ['tpl-core', 'mock-good', 'mock-bad'], ['mock-good', 'mock-bad'])
+    // 用户层行（home patch）也在停用集合内。
+    writeFileSync(join(home, 'cordis.patch.yml'), '- insert:\n  - id: mcp-user\n    name: \'@deepseek-ai/dsh-mcp-client\'\n')
+    const { guard } = makeGuard(home, 'Error: dsh: fatal load failure: something opaque') // 无任何已知签名
+    const first = guard.considerCrash({ terminal: true })
+    expect(first.quarantinedNew).toBe(false) // streak 1
+    const second = guard.considerCrash({ terminal: true })
+    expect(second.quarantinedNew).toBe(true) // streak 2 → 安全模式
+    const disabled = disabledEntryIds({ dshHome: home })
+    expect(disabled.has('mock-good')).toBe(true)
+    expect(disabled.has('mock-bad')).toBe(true)
+    expect(disabled.has('mcp-user')).toBe(true)
+    expect(disabled.has('e-core')).toBe(false) // 模板不动
+    expect(guard.findings().some(f => f.key === 'boot:safe-mode' && f.category === 'safe-mode')).toBe(true)
+    // 第三次：一次性，不再动作，但记环境 finding。
+    const third = guard.considerCrash({ terminal: true })
+    expect(third.quarantinedNew).toBe(false)
+    expect(guard.findings().some(f => f.key === 'boot:environment')).toBe(true)
+    // noteBootSuccess 清连击；reEnableAll 复位安全模式与行。
+    guard.noteBootSuccess()
+    const { removed } = guard.reEnableAll()
+    expect(removed.sort()).toEqual(['mcp-user', 'mock-bad', 'mock-good'])
+    expect(guard.findings()).toEqual([])
+  })
+
+  it('does not count streak on spawn errors or actionable-only rounds', () => {
+    const home = join(root, 'nostonks')
+    writeBundle(home, 'mock-good', '- insert:\n  - id: mock-good\n    name: mock-good\n')
+    writeManifest(home, ['mock-good'], ['mock-good'])
+    // spawn 环境错误：不计（也不清零）。
+    const spawnGuard = makeGuard(home, 'Error: spawn dsh ENOENT').guard
+    expect(spawnGuard.considerCrash({ terminal: true }).quarantinedNew).toBe(false)
+    expect(spawnGuard.considerCrash({ terminal: true }).quarantinedNew).toBe(false)
+    expect(spawnGuard.findings().some(f => f.key === 'boot:safe-mode')).toBe(false)
+    // 有可动作发现（bundle 缺件）的报告轮：不推进连击。
+    const bundleGuard = makeGuard(home, 'Error: cannot resolve profile bundle "mock-gone" from the dsh installation or C:/p; x').guard
+    for (let i = 0; i < 3; i++) expect(bundleGuard.considerCrash({ terminal: true }).quarantinedNew).toBe(false)
+    expect(bundleGuard.findings().some(f => f.key === 'boot:safe-mode')).toBe(false)
+  })
+
+  it('considerRuntime quarantines user-domain failed fibers, records system fibers, and is idempotent across ticks', () => {
+    const home = join(root, 'runtime')
+    writeBundle(home, 'mock-crash', '- insert:\n  - id: mock-crash\n    name: mock-crash\n')
+    writeManifest(home, ['mock-crash'], ['mock-crash'])
+    const { guard } = makeGuard(home)
+    const inventory = [
+      { entryId: 'mock-crash', moduleName: 'mock-crash', enabled: true, fiberPhase: 'failed' },
+      { entryId: 'mock-wait', moduleName: 'mock-wait', enabled: true, fiberPhase: 'pending' },
+      { entryId: 'mock-off', moduleName: 'mock-off', enabled: false, fiberPhase: 'failed' }, // 已停用不处理
+      { entryId: 'mock-ok', moduleName: 'mock-ok', enabled: true, fiberPhase: 'active' },
+      // 系统级 fiber（不在层表的 tracked/用户域内）：只记录，绝不自动停用（live 层写行即时生效）。
+      { entryId: 'dsh-web-app-core', moduleName: '@deepseek-ai/dsh-web-app', enabled: true, fiberPhase: 'failed' },
+    ]
+    guard.considerRuntime(inventory)
+    guard.considerRuntime(inventory) // 重复 tick：幂等，不追加行、不重复记账
+    const disabled = disabledEntryIds({ dshHome: home })
+    expect(disabled.has('mock-crash')).toBe(true)
+    expect(disabled.has('mock-wait')).toBe(false)
+    expect(disabled.has('dsh-web-app-core')).toBe(false)
+    const byKey = new Map(guard.findings().map(f => [f.key, f]))
+    expect(byKey.get('runtime:mock-crash')!.category).toBe('plugin-error')
+    expect(byKey.get('runtime:mock-wait')!.category).toBe('dependency-missing')
+    expect(byKey.get('runtime:dsh-web-app-core')!.reason).toContain('仅记录')
+    expect(byKey.has('runtime:mock-off')).toBe(false)
+    expect(byKey.has('runtime:mock-ok')).toBe(false)
+    expect(guard.findings().filter(f => f.key === 'runtime:mock-crash')).toHaveLength(1) // 台账按 key 合并
+  })
 })

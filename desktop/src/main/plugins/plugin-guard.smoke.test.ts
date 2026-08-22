@@ -6,6 +6,7 @@ import { parse } from 'yaml'
 import { bundleSeeded, seedBundle } from './market-seed'
 import { PluginGuard } from './plugin-guard'
 import { disabledEntryIds } from './guard-quarantine'
+import { PluginRuntimeMonitor, type RuntimeInventoryEntry } from './guard-runtime'
 import { SidecarLogger } from '../sidecar/sidecar-logger'
 import { SidecarManager } from '../sidecar/sidecar-manager'
 import { resolveRuntime } from '../sidecar/runtime-resolver'
@@ -34,7 +35,8 @@ describe.skipIf(!harnessReady || !nodeOk)('plugin-guard smoke', () => {
   const guardLogs: string[] = []
   const guard = new PluginGuard({
     dshHome,
-    readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return null } },
+    // 缺失/不可读按空日志计（与 index.ts 生产口径一致：静默死亡的 boot 可能不落任何日志文件）。
+    readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return '' } },
     log: (line) => { guardLogs.push(line) },
   })
   const mgr = new SidecarManager({
@@ -66,13 +68,15 @@ describe.skipIf(!harnessReady || !nodeOk)('plugin-guard smoke', () => {
     return dir
   }
 
-  const GOOD = writeMock('mock-good', 'mock-good', 'export const name = \'mock-good\'\nexport function apply() {}\n')
-  const PENDING_A = writeMock('mock-pending-a', 'mock-pending-a', 'export const name = \'mock-pending-a\'\nexport const inject = [\'no-such-service-xyz-a\']\nexport function apply() {}\n')
-  const PENDING_B = writeMock('mock-pending-b', 'mock-pending-b', 'export const name = \'mock-pending-b\'\nexport const inject = [\'no-such-service-xyz-b\']\nexport function apply() {}\n')
-  const DUP_A = writeMock('mock-dup-a', 'mock-dup-entry', 'export const name = \'mock-dup-a\'\nexport function apply() {}\n')
-  const DUP_B = writeMock('mock-dup-b', 'mock-dup-entry', 'export const name = \'mock-dup-b\'\nexport function apply() {}\n')
-  const CRASH = writeMock('mock-crash', 'mock-crash', 'export const name = \'mock-crash\'\nexport function apply() { throw new Error(\'mock-crash boom\') }\n')
-  const IMPORT = writeMock('mock-import', 'mock-import', 'import \'./missing.js\'\nexport const name = \'mock-import\'\nexport function apply() {}\n')
+    const GOOD = writeMock('mock-good', 'mock-good', 'export const name = \'mock-good\'\nexport function apply() {}\n')
+    const PENDING_A = writeMock('mock-pending-a', 'mock-pending-a', 'export const name = \'mock-pending-a\'\nexport const inject = [\'no-such-service-xyz-a\']\nexport function apply() {}\n')
+    const PENDING_B = writeMock('mock-pending-b', 'mock-pending-b', 'export const name = \'mock-pending-b\'\nexport const inject = [\'no-such-service-xyz-b\']\nexport function apply() {}\n')
+    const DUP_A = writeMock('mock-dup-a', 'mock-dup-entry', 'export const name = \'mock-dup-a\'\nexport function apply() {}\n')
+    const DUP_B = writeMock('mock-dup-b', 'mock-dup-entry', 'export const name = \'mock-dup-b\'\nexport function apply() {}\n')
+    const CRASH = writeMock('mock-crash', 'mock-crash', 'export const name = \'mock-crash\'\nexport function apply() { throw new Error(\'mock-crash boom\') }\n')
+    const IMPORT = writeMock('mock-import', 'mock-import', 'import \'./missing.js\'\nexport const name = \'mock-import\'\nexport function apply() {}\n')
+    // 原生式静默死亡：apply 里直接 exit，无 JS 异常、无签名（模拟 napi 级崩溃/进程暴毙）。
+    const NATIVE = writeMock('mock-native', 'mock-native', 'export const name = \'mock-native\'\nexport function apply() { process.exit(7) }\n')
 
   async function install(dirs: string[]): Promise<void> {
     const code = await seedBundle({ mode: 'source', execPath: process.execPath, repoRoot, env, specs: dirs })
@@ -213,5 +217,42 @@ describe.skipIf(!harnessReady || !nodeOk)('plugin-guard smoke', () => {
     guard.preBoot()
     expect(disabledEntryIds({ dshHome }).size).toBe(disabledCountBefore)
     expect(manifestBundles()).not.toContain('mock-dup-b')
+
+    // ── 阶段 5：原生式静默崩溃（无签名）→ 安全模式兜底。
+    // 阶段 4 已还原全部行；树上 6 个 mock 全部启用。mock-native 的 apply 直接 exit，
+    // 日志无任何可定位签名 → 两轮空诊断 → 安全模式一次性停用全部 tracked 行。
+    await install([NATIVE])
+    const r5a = await crashRound('native-1')
+    expect(r5a, `first native crash should find nothing; log tail:\n${readLogTail()}\nguard:\n${guardLogs.slice(-8).join('\n')}`).toBe(false)
+    const r5b = await crashRound('native-2')
+    expect(r5b, `second native crash should engage safe mode; log tail:\n${readLogTail()}\nguard:\n${guardLogs.slice(-8).join('\n')}`).toBe(true)
+    const disabledFive = disabledEntryIds({ dshHome })
+    for (const id of ['mock-good', 'mock-dup-entry', 'mock-crash', 'mock-import', 'mock-pending-a', 'mock-pending-b', 'mock-native']) {
+      expect(disabledFive.has(id), `safe mode should disable ${id}`).toBe(true)
+    }
+    await waitForState(['ready'], 'phase5: safe-mode recover', 180_000)
+    await readyRound('phase5') // 安全模式确实能打开（就绪行 + /api 200）
+    expect(guard.findings().some(f => f.key === 'boot:safe-mode' && f.category === 'safe-mode')).toBe(true)
+
+    // ── 运行期健康轮询：真实端点（pluginInventory/list 斜杠两段式）。
+    let polled: RuntimeInventoryEntry[] | undefined
+    let pollError: unknown
+    const monitor = new PluginRuntimeMonitor({
+      port: () => mgr.port,
+      onInventory: (entries) => { polled = [...entries] },
+      onError: (error) => { pollError = error },
+    })
+    await monitor.tick()
+    monitor.stop()
+    expect(pollError, `runtime poll against real endpoint failed: ${String(pollError)}`).toBeUndefined()
+    expect(polled!.length, 'pluginInventory/list should return entries').toBeGreaterThan(0)
+    for (const entry of polled!) {
+      expect(['active', 'loading', 'pending', 'unloading', null]).toContain(entry.fiberPhase) // 健康树无 failed
+    }
+
+    // ── 阶段 6：重新启用收尾（安全模式行全清）。
+    const removedFive = guard.reEnableAll().removed.sort()
+    expect(removedFive).toEqual(['mock-crash', 'mock-dup-entry', 'mock-good', 'mock-import', 'mock-native', 'mock-pending-a', 'mock-pending-b'])
+    expect(guard.findings()).toEqual([])
   })
 })

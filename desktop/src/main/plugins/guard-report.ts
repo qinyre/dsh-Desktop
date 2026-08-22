@@ -6,6 +6,7 @@ export const CATEGORY_LABELS: Record<GuardCategory, string> = {
   'dependency-missing': '依赖缺失',
   'plugin-error': '运行故障',
   'config-corrupt': '配置损坏',
+  'safe-mode': '安全模式',
 }
 
 export function findingLabel(f: GuardFinding): string {

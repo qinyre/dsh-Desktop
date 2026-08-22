@@ -28,6 +28,8 @@ export interface LayerTable {
   corruptLayers: CorruptLayer[]
   /** tracked 中 node_modules/<name>/package.json 缺失者（与 profile-heal 审计同口径，仅报告）。 */
   missingBundles: string[]
+  /** tracked 中包清单声明了 JS 入口但入口文件缺失者（半安装残骸：重装同 spec 不恢复，预隔离）。 */
+  brokenBundles: string[]
 }
 
 interface PatchItem {
@@ -81,7 +83,7 @@ function rowsOfLayer(path: string, items: PatchItem[]): PatchRow[] {
 export function readLayerTable(opts: { dshHome: string; profile?: string }): LayerTable {
   const profileName = opts.profile ?? 'web'
   const profileDir = join(opts.dshHome, 'profiles', profileName)
-  const table: LayerTable = { rows: [], idsByName: new Map(), bundles: [], tracked: [], corruptLayers: [], missingBundles: [] }
+  const table: LayerTable = { rows: [], idsByName: new Map(), bundles: [], tracked: [], corruptLayers: [], missingBundles: [], brokenBundles: [] }
   const manifestPath = join(profileDir, 'package.json')
   let bundles: string[] = []
   let dependencies: string[] = []
@@ -126,6 +128,11 @@ export function readLayerTable(opts: { dshHome: string; profile?: string }): Lay
       if (items === undefined || tracked) table.corruptLayers.push({ path: patchPath, bundle: name })
       continue
     }
+    if (tracked && declaredEntryMissing(dirname(pkgPath))) {
+      // 半安装残骸：入口文件缺失的行必炸 import（hoisted linker 下 row.name===包名确定性命中），
+      // 且同 spec 重装不恢复（pnpm 视为已装）——由守卫预隔离，修复须先卸载再装。
+      table.brokenBundles.push(name)
+    }
     table.rows.push(...rowsOfLayer(patchPath, items))
   }
   for (const path of [join(profileDir, 'cordis.patch.yml'), join(opts.dshHome, 'cordis.patch.yml')]) {
@@ -154,6 +161,47 @@ export function findDuplicateEntryIds(table: LayerTable): string[] {
     seen.add(row.id)
   }
   return [...dup]
+}
+
+interface PackageManifestShape {
+  main?: unknown
+  module?: unknown
+  exports?: unknown
+}
+
+/**
+ * 按 node 的解析优先级从包清单取 JS 入口：exports['.'] 优先（字符串，或条件对象取
+ * import → default → require 分支——真实 dsh 包是 {types, default} 形态），其后 main、
+ * module。都不声明（纯 patch 层 bundle 的合法形态）返回 undefined。
+ */
+function entryFieldOf(pkg: PackageManifestShape): string | undefined {
+  const dot = (pkg.exports as Record<string, unknown> | undefined | null)?.['.']
+  if (typeof dot === 'string' && dot !== '') return dot
+  if (dot !== null && typeof dot === 'object' && !Array.isArray(dot)) {
+    for (const key of ['import', 'default', 'require']) {
+      const value = (dot as Record<string, unknown>)[key]
+      if (typeof value === 'string' && value !== '') return value
+    }
+  }
+  if (typeof pkg.main === 'string' && pkg.main !== '') return pkg.main
+  if (typeof pkg.module === 'string' && pkg.module !== '') return pkg.module
+  return undefined
+}
+
+/**
+ * 包清单声明了 JS 入口但入口文件在磁盘上缺失（半安装残骸的典型形态：EPERM 中断掏空
+ * 了 dist 而 package.json 幸存）。未声明入口或清单不可读返回 false——那些形态归
+ * missingBundles/corruptLayers 等其他判据管。
+ */
+export function declaredEntryMissing(pkgDir: string): boolean {
+  let pkg: PackageManifestShape
+  try {
+    pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as PackageManifestShape
+  } catch {
+    return false
+  }
+  const entry = entryFieldOf(pkg)
+  return entry !== undefined && !existsSync(join(pkgDir, entry))
 }
 
 /** 行来源是否为插件包内的 patch 层（node_modules 下）。 */

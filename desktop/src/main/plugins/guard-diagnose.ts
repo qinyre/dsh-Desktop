@@ -1,7 +1,7 @@
 import type { LayerTable } from './patch-layers'
 
-/** 问题类别（对用户口径：冲突 / 依赖缺失 / 运行故障 / 配置损坏）。 */
-export type GuardCategory = 'conflict' | 'dependency-missing' | 'plugin-error' | 'config-corrupt'
+/** 问题类别（对用户口径：冲突 / 依赖缺失 / 运行故障 / 配置损坏 / 安全模式）。 */
+export type GuardCategory = 'conflict' | 'dependency-missing' | 'plugin-error' | 'config-corrupt' | 'safe-mode'
 
 export type GuardFindingKind = 'entry' | 'bundle' | 'file' | 'service'
 
@@ -15,7 +15,7 @@ export interface GuardFinding {
   path?: string
   category: GuardCategory
   reason: string
-  source: 'pre-boot' | 'crash'
+  source: 'pre-boot' | 'crash' | 'runtime'
   firstSeen: string
 }
 

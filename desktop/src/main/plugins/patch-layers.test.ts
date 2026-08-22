@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { bundleNameOfRowSource, findDuplicateEntryIds, isBundleRow, readLayerTable } from './patch-layers'
+import { bundleNameOfRowSource, declaredEntryMissing, findDuplicateEntryIds, isBundleRow, readLayerTable } from './patch-layers'
 
 describe('readLayerTable', () => {
   const root = mkdtempSync(join(tmpdir(), 'patch-layers-'))
@@ -91,5 +91,47 @@ describe('readLayerTable', () => {
     expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules', '@qinyre', 'dsh-plugin-x', 'cordis.patch.yml'))).toBe(join('@qinyre', 'dsh-plugin-x'))
     expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules', 'plain', 'cordis.patch.yml'))).toBe('plain')
     expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules'))).toBeUndefined()
+  })
+
+  it('flags tracked bundles whose declared entry file is missing (brokenBundles)', () => {
+    const home = join(root, 'broken-entry')
+    // main 形态：清单声明 dist/index.js，文件不存在。
+    const mk = (name: string, manifestExtra: Record<string, unknown>, writeFile = false): void => {
+      const dir = join(home, 'profiles', 'web', 'node_modules', name)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.1', ...manifestExtra, dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+      writeFileSync(join(dir, 'cordis.patch.yml'), `- insert:\n  - id: e-${name}\n    name: ${name}\n`)
+      if (writeFile) writeFileSync(join(dir, 'dist-index.js'), '')
+    }
+    mk('p-main', { main: './dist-index.js' })
+    mk('p-module', { module: './dist-index.js' })
+    mk('p-exports-str', { exports: { '.': './dist-index.js' } })
+    mk('p-exports-obj', { exports: { '.': { types: './x.d.ts', default: './dist-index.js' } } })
+    mk('p-exports-import', { exports: { '.': { import: './dist-index.js' } } })
+    mk('p-healthy', { main: './dist-index.js' }, true)
+    // patch-only：无任何入口字段——合法形态，不算残缺。
+    writeBundle(home, 'p-patch-only', '- insert:\n  - id: e-po\n    name: some-other-module\n')
+    writeManifest(home, ['p-main', 'p-module', 'p-exports-str', 'p-exports-obj', 'p-exports-import', 'p-healthy', 'p-patch-only', 'p-template'],
+      ['p-main', 'p-module', 'p-exports-str', 'p-exports-obj', 'p-exports-import', 'p-healthy', 'p-patch-only'])
+    const table = readLayerTable({ dshHome: home })
+    expect(table.brokenBundles.sort()).toEqual(['p-exports-import', 'p-exports-obj', 'p-exports-str', 'p-main', 'p-module'])
+  })
+
+  it('declaredEntryMissing reads exports before main and treats unreadable manifests as not-declared', () => {
+    const home = join(root, 'entry-helper')
+    const dir = join(home, 'pkg')
+    mkdirSync(dir, { recursive: true })
+    const write = (manifest: Record<string, unknown>): void => { writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest)) }
+    write({ main: './there.js', exports: { '.': './missing.js' } })
+    expect(declaredEntryMissing(dir)).toBe(true) // exports 命中 missing，main 不救
+    writeFileSync(join(dir, 'missing.js'), '')
+    expect(declaredEntryMissing(dir)).toBe(false)
+    rmSync(join(dir, 'missing.js'))
+    write({ main: './missing.js' })
+    expect(declaredEntryMissing(dir)).toBe(true)
+    write({ no: 'entry-fields' })
+    expect(declaredEntryMissing(dir)).toBe(false) // patch-only 合法
+    writeFileSync(join(dir, 'package.json'), '{ nope')
+    expect(declaredEntryMissing(dir)).toBe(false) // 清单不可读归其他判据
   })
 })

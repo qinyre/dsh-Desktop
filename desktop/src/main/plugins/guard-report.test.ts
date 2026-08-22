@@ -28,6 +28,7 @@ describe('buildGuardReport', () => {
 
   it('labels every category in Chinese and falls back through id/bundle/path', () => {
     expect(CATEGORY_LABELS['config-corrupt']).toBe('配置损坏')
+    expect(CATEGORY_LABELS['safe-mode']).toBe('安全模式')
     expect(findingLabel(finding({ name: undefined, id: 'e1' }))).toBe('e1')
     expect(findingLabel(finding({ kind: 'bundle', bundle: 'b1', id: undefined }))).toBe('b1')
   })

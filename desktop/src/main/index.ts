@@ -6,6 +6,7 @@ import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
 import { PluginGuard } from './plugins/plugin-guard'
 import { showGuardReport } from './plugins/guard-report'
+import { PluginRuntimeMonitor } from './plugins/guard-runtime'
 import { auditProfileBundles, BundleBrickHealer } from './sidecar/profile-heal'
 import { repairSkinsBrick, skinBrickDetected } from './sidecar/skin-selfheal'
 import { SidecarLogger } from './sidecar/sidecar-logger'
@@ -179,13 +180,23 @@ if (!gotLock) {
     // entry id / 补丁层损坏等问题并先行隔离，避免进入崩溃循环。失败绝不阻断启动。
     guard = paths.dshHome === undefined ? undefined : new PluginGuard({
       dshHome: paths.dshHome,
-      readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return null } },
+      // 文件缺失（静默死亡的 boot 可能一行输出都没有，logger 惰性建文件）或读取失败都按
+      // 空日志计：崩溃后拿不到任何输出本身就是「无证据」，安全模式的连击必须走得通。
+      readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return '' } },
       log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
     })
     if (guard !== undefined) {
       windows?.showActivity('正在检查插件安全状态…')
       guard.preBoot()
     }
+    // 运行期插件健康轮询（boot 成功后经 pluginInventory 网关读 fiber 状态）：FAILED 即时
+    // 写隔离行（home 层被 sidecar live watch，实时生效），PENDING 仅记账。start 幂等，
+    // 每次 ready 重挂；crashed/failed/退出即停。
+    const runtimeMonitor = guard === undefined ? undefined : new PluginRuntimeMonitor({
+      port: () => sidecar?.port,
+      onInventory: (entries) => { if (guard !== undefined) guard.considerRuntime(entries) },
+      onError: (error) => { logger.appendLine(`[dsh-desktop] plugin guard runtime poll failed: ${String(error)}`) },
+    })
     sidecar = new SidecarManager({
       // rc.8 起 dsh web 在非 SSH 环境默认把就绪 URL 交给系统默认浏览器；桌面壳自带
       // 窗口，必须 --no-open，否则每次启动都会多弹一个浏览器标签（SSH 抑制条件在
@@ -196,6 +207,8 @@ if (!gotLock) {
     })
     sidecar.on('ready', (port) => {
       windows?.loadDsh(port)
+      guard?.noteBootSuccess()
+      runtimeMonitor?.start()
       // 本轮有新隔离时弹一次报告（等 dsh 页加载完成再弹，3s 兜底）。fired 拦掉
       // 「兜底 timer 已触发后 did-finish-load 才到」的双弹；轮次号拦掉 restart 循环里
       // 旧 ready 挂上的 stale 监听闭包（旧轮的弹窗不该盖过新轮）。
@@ -265,6 +278,7 @@ if (!gotLock) {
       if (state === 'spawning') windows?.showActivity('正在启动 dsh 服务…')
       if (state === 'failed') windows?.showStatus('failed', `详情见日志：${join(paths.logDir, 'sidecar.log')}`)
       if (state === 'crashed' || state === 'failed') {
+        runtimeMonitor?.stop()
         runHealer('skin heal', () => healSkins())
         // terminal：管理器已放弃重启，对修复失败过的包再给一次机会。
         runHealer('bundle heal', () => bundleHealer?.consider({ terminal: state === 'failed' }))
@@ -283,7 +297,7 @@ if (!gotLock) {
     // before-quit 监听不会重复注册（与下方 sidecar 的 before-quit 互不影响）。
     const eventTap = new EventTap({ getMainWindow: () => windows?.mainWindow })
     eventTap.attach(sidecar)
-    app.on('before-quit', () => eventTap.close())
+    app.on('before-quit', () => { eventTap.close(); runtimeMonitor?.stop() })
 
     // 自动更新（设计书 §8）：默认检查本仓库的 GitHub Releases（v0.1.0 起资产带 latest.yml），
     // DSH_DESKTOP_FEED_URL 可覆盖为任意 generic feed（本地测试/未来迁移）；仅打包启用。

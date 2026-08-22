@@ -12,6 +12,7 @@ const table: LayerTable = {
   tracked: ['mock-crash', 'mock-pending'],
   corruptLayers: [],
   missingBundles: [],
+  brokenBundles: [],
 }
 
 describe('diagnoseLog', () => {
