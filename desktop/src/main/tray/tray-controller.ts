@@ -7,7 +7,7 @@ export class TrayController {
   private trayHintShown = false
   private quiting = false
 
-  constructor(private readonly opts: { iconPath: string; logDir: string; onShow(): void; onRestart(): void; onCheckUpdates(): void; onQuit(): void }) {}
+  constructor(private readonly opts: { iconPath: string; logDir: string; onShow(): void; onRestart(): void; onCheckUpdates(): void; onGuardReport(): void; onQuit(): void }) {}
 
   attach(win: BrowserWindow): void {
     this.tray = new Tray(this.opts.iconPath)
@@ -17,6 +17,8 @@ export class TrayController {
       // 插件市场在 Web UI 的设置页里（dshmarket，无 URL 路由可深链）；
       // 「重启服务」承接市场安装后的待重启提示（market 自重启已通过配置关闭）。
       { label: '重启服务', click: () => this.opts.onRestart() },
+      // 插件守卫的隔离台账（启动时自动隔离过问题插件时，随时可回看/重新启用）。
+      { label: '插件隔离报告', click: () => this.opts.onGuardReport() },
       // 手动触发一次更新检查（结果对话框反馈）；启动时的被动检查见 updater-controller.start()。
       { label: '检查更新', click: () => this.opts.onCheckUpdates() },
       { label: '打开日志目录', click: () => { void shell.openPath(this.opts.logDir) } },

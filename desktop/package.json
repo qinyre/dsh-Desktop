@@ -15,6 +15,7 @@
     "check:electron": "electron scripts/check-node.mjs",
     "smoke:sidecar": "vitest run -t \"sidecar smoke\"",
     "smoke:market": "vitest run -t \"market seed smoke\"",
+    "smoke:guard": "vitest run -t \"plugin-guard smoke\"",
     "smoke:picker": "electron scripts/picker-readutf16-smoke.cjs",
     "smoke:hideconsole": "electron scripts/spawn-windowhide-smoke.cjs",
     "dist": "electron-vite build && electron-builder --win nsis --publish never",

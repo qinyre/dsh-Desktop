@@ -31,6 +31,7 @@ DeepSeek Harness 自带一流的 Web UI，但它默认你有一台开发者环�
 - sidecar 有监督重启（指数退避），进程崩了会自动拉起；dsh 的 append-only 会话日志也保证对话不丢。
 - 窗口隐藏或失焦时，等待中的审批和回合结束会发 Windows 原生通知；窗口可以关闭到托盘，长任务在后台继续。
 - 首次启动预装四个插件：可视化插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）、任意包名直装的「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）、「技能与 MCP」管理分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）、归档管理与对话刻度尺（[dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)），详见[插件](#插件)。
+- 插件出问题不再拖垮整个应用：冲突、缺依赖、自身崩溃或配置损坏会被自动识别并屏蔽，客户端照常打开，随后弹窗点名是哪个插件、坏在哪里。
 - 原生标题栏跟随 Web UI 的明暗主题变色（Windows 11 上与页面同色，Windows 10 上跟随深浅）。
 - 更新安装前会先询问，并自动备份会话、凭据和设置。
 
@@ -74,6 +75,10 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 
 设置页新增一级分区「归档管理」——归档的会话在这里浏览、预览、一键恢复，自动归档规则可选配；对话区左缘同时多了一把刻度尺，每格对应一次发言，悬停预览、点击跳转。
 
+### 出问题的插件
+
+dsh 的插件是整棵树一起激活的：一个插件导入失败、与另一个插件冲突（比如注册了同一个 entry id），或者依赖没有装全，服务就整个起不来。DSH Desktop 为此在启动前先做一次静态体检，服务仍然启动失败时再从崩溃日志定位到具体插件，把肇事的插件停用后自动重启——多数情况下你只会觉得这次启动稍慢，应用照常打开，随后弹一个窗口说明哪个插件因为什么被屏蔽。被隔离的记录保存在托盘菜单的「插件隔离报告」里，随时可以回看；认为问题已解决时可以一键重新启用，如果插件仍然是坏的，它只会再次被隔离，不会把应用锁死。
+
 > 安装插件会在本机执行第三方代码（pnpm 生命周期脚本），这一点与 dsh CLI 相同。请只安装来源可信的插件。
 
 ## 工作原理
@@ -98,6 +103,7 @@ cd desktop && pnpm install
 pnpm run dev            # 启动应用（dev 模式使用源码仓）
 pnpm test               # 单元测试
 pnpm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
+pnpm run smoke:guard    # 插件守卫全链路冒烟：自制 mock 插件制造冲突/缺依赖/崩溃，断言自动隔离后照常就绪
 DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # 干净 PATH 市场预装冒烟（Windows）
 pnpm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
 pnpm run smoke:hideconsole  # 子进程 windowsHide 补丁冒烟（Windows）
@@ -113,7 +119,7 @@ dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_
 
 `patches/` 里的五份补丁以 pnpm patchedDependencies 声明，`pnpm install` 时自动应用；升级 dsh 使补丁失配时会在安装阶段报错，不会静默失效。
 
-**启动永不砖（dsh-app-boot）**：profile 声明的 bundle 在磁盘上缺件时（插件更新被中途打断的典型残骸），dsh 的 loader 会在导入阶段抛错、整树拒绝启动。补丁把单个 bundle 的解析失败降级为跳过 + 告警，配合应用层的启动前审计与崩溃自愈器，坏掉的插件不再拖垮整个应用。
+**启动永不砖（dsh-app-boot）**：profile 声明的 bundle 在磁盘上缺件时（插件更新被中途打断的典型残骸），dsh 的 loader 会在导入阶段抛错、整树拒绝启动。补丁把单个 bundle 的解析失败降级为跳过 + 告警，配合应用层的启动前审计、崩溃自愈器与插件守卫，坏掉的插件不再拖垮整个应用。
 
 **目录选择器（koffi）**：dsh 的 Win32 目录选择 worker 原先用 `koffi.view()` 读取所选路径，该调用在 Electron 内嵌 Node 下会触发致命错误（`Error::New napi_get_last_error_info`，普通 Node 不受影响），打包版选择工作区文件夹后会报 "win32 folder dialog worker exited before reporting a result"。补丁将读取改为逐单元的 `koffi.decode()`；`pnpm run smoke:picker` 会在真实 `ELECTRON_RUN_AS_NODE` 子进程中验证。
 
@@ -126,7 +132,7 @@ desktop/
 ├── src/main/sidecar/     # 进程监督：状态机、运行时解析、日志
 ├── src/main/windows/     # 窗口控制器、导航锁、状态页
 ├── src/main/events/      # EventTap：两条下行 WebSocket → 通知
-├── src/main/plugins/     # 插件预装（市场、安装、能力管理、归档刻度尺） + 运行时 pnpm shim
+├── src/main/plugins/     # 插件预装 + 插件守卫（问题插件识别/隔离/报告） + 运行时 pnpm shim
 ├── src/main/tray/        # 托盘
 ├── src/main/updater/     # electron-updater + DSH_HOME 备份
 └── src/renderer/         # 状态页（其余全是 dsh 的 Web UI）

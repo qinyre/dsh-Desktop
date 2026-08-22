@@ -31,6 +31,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
 - Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
+- A misbehaving plugin no longer takes the app down: conflicts, missing dependencies, crashes, and corrupt plugin config are recognized automatically, the offender is quarantined, the app opens as usual, and a dialog names what was blocked and why.
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
@@ -74,6 +75,10 @@ Adds a "Skills & MCP" section to the settings page, level with Models and Plugin
 
 An "Archive management" section in Settings — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump.
 
+### When a plugin misbehaves
+
+dsh activates its plugin tree as a whole: one plugin that fails to import, collides with another (two plugins claiming the same entry id, say), or sits on a missing dependency keeps the entire service from starting. DSH Desktop runs a static check before launch and, when the service still fails to boot, pinpoints the culprit from the crash log, disables it, and restarts on its own — in most cases all you notice is a slightly slower startup, the app opens as usual, and a dialog names the plugin and why it was blocked. The quarantine list stays available under the tray menu's plugin report; once you believe a plugin is fixed, re-enable it with one click — if it is still broken, it simply gets quarantined again instead of locking up the app.
+
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 
 ## How it works
@@ -98,6 +103,7 @@ cd desktop && pnpm install
 pnpm run dev            # launch the app (dev uses the source checkout)
 pnpm test               # unit tests
 pnpm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
+pnpm run smoke:guard    # plugin-guard full-chain smoke: mock plugins inject conflicts, missing deps, and crashes; asserts auto-quarantine then a clean boot
 DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # clean-PATH market seed smoke (Windows)
 pnpm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
 pnpm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
@@ -113,7 +119,7 @@ Dev mode resolves the upstream checkout at `../deepseek-harness` (override with 
 
 `patches/` carries five patches declared as pnpm patchedDependencies, applied automatically by `pnpm install`; a dsh upgrade that breaks any of them fails loudly at install time instead of silently regressing.
 
-**Brick-proof boot (dsh-app-boot)**: when a profile-declared bundle is missing on disk (the typical debris of an interrupted plugin update), dsh's loader throws during import and refuses to boot the whole tree. The patch downgrades a single bundle's resolution failure to skip + warning; together with the shell's pre-boot audit and crash self-healers, a broken plugin can no longer take the whole app down.
+**Brick-proof boot (dsh-app-boot)**: when a profile-declared bundle is missing on disk (the typical debris of an interrupted plugin update), dsh's loader throws during import and refuses to boot the whole tree. The patch downgrades a single bundle's resolution failure to skip + warning; together with the shell's pre-boot audit, crash self-healers, and the plugin guard, a broken plugin can no longer take the whole app down.
 
 **Workspace picker (koffi)**: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`; `pnpm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child.
 
@@ -126,7 +132,7 @@ desktop/
 ├── src/main/sidecar/     # process supervision: state machine, runtime resolver, logs
 ├── src/main/windows/     # window controller, navigation guard, status page
 ├── src/main/events/      # EventTap: two downlink WebSockets → notifications
-├── src/main/plugins/     # plugin seeding (market, install, capabilities, atlas) + runtime pnpm shim
+├── src/main/plugins/     # plugin seeding + plugin guard (detect / quarantine / report) + runtime pnpm shim
 ├── src/main/tray/        # tray controller
 ├── src/main/updater/     # electron-updater + DSH_HOME backup
 └── src/renderer/         # status page (the rest is dsh's Web UI)

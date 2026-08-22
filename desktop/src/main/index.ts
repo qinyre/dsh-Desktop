@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { app, ipcMain, Menu, shell } from 'electron'
+import { app, dialog, ipcMain, Menu, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
 import { EventTap } from './events/event-tap'
+import { PluginGuard } from './plugins/plugin-guard'
+import { showGuardReport } from './plugins/guard-report'
 import { auditProfileBundles, BundleBrickHealer } from './sidecar/profile-heal'
 import { repairSkinsBrick, skinBrickDetected } from './sidecar/skin-selfheal'
 import { SidecarLogger } from './sidecar/sidecar-logger'
@@ -42,6 +44,10 @@ const repoRoot = process.env.DESKTOP_DSH_REPO ?? join(app.getAppPath(), '..', 'd
 
 let sidecar: SidecarManager | undefined
 let windows: WindowController | undefined
+// 插件守卫（plugin-guard.ts）：托盘回调引用它，声明必须先于 TrayController 构造。
+let guard: PluginGuard | undefined
+// ready 弹窗轮次号：每次 ready 递增，旧轮弹窗闭包据此失效（防 restart 循环双弹）。
+let readyGeneration = 0
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -91,6 +97,21 @@ if (!gotLock) {
       onShow: () => { windows?.focus() },
       onRestart: () => { void sidecar?.restart() },
       onCheckUpdates: () => { void updater?.checkNow() },
+      onGuardReport: () => {
+        const g = guard
+        if (g === undefined) return
+        const findings = g.findings()
+        if (findings.length === 0) {
+          void dialog.showMessageBox({ type: 'info', message: '当前没有已隔离的插件。', buttons: ['知道了'] })
+          return
+        }
+        void showGuardReport({
+          win: windows?.mainWindow,
+          findings,
+          onOpenLogs: () => { void shell.openPath(paths.logDir) },
+          onReenable: () => { g.reEnableAll(); void sidecar?.restart() },
+        }).then(() => g.markReported())
+      },
       onQuit: () => { app.quit() },
     })
     if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
@@ -154,6 +175,17 @@ if (!gotLock) {
         },
       })
     }
+    // 插件守卫启动前静态预检（在审计与预装之后、sidecar 未起的安全窗口）：识别重复
+    // entry id / 补丁层损坏等问题并先行隔离，避免进入崩溃循环。失败绝不阻断启动。
+    guard = paths.dshHome === undefined ? undefined : new PluginGuard({
+      dshHome: paths.dshHome,
+      readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return null } },
+      log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
+    })
+    if (guard !== undefined) {
+      windows?.showActivity('正在检查插件安全状态…')
+      guard.preBoot()
+    }
     sidecar = new SidecarManager({
       // rc.8 起 dsh web 在非 SSH 环境默认把就绪 URL 交给系统默认浏览器；桌面壳自带
       // 窗口，必须 --no-open，否则每次启动都会多弹一个浏览器标签（SSH 抑制条件在
@@ -162,7 +194,30 @@ if (!gotLock) {
       env: sidecarEnv,
       logger,
     })
-    sidecar.on('ready', (port) => { windows?.loadDsh(port) })
+    sidecar.on('ready', (port) => {
+      windows?.loadDsh(port)
+      // 本轮有新隔离时弹一次报告（等 dsh 页加载完成再弹，3s 兜底）。fired 拦掉
+      // 「兜底 timer 已触发后 did-finish-load 才到」的双弹；轮次号拦掉 restart 循环里
+      // 旧 ready 挂上的 stale 监听闭包（旧轮的弹窗不该盖过新轮）。
+      const generation = ++readyGeneration
+      const win = windows?.mainWindow
+      let fired = false
+      const showPending = (): void => {
+        if (fired || generation !== readyGeneration) return
+        fired = true
+        const pending = guard?.onReady() ?? []
+        if (pending.length === 0) return
+        showGuardReport({
+          win,
+          findings: pending,
+          onOpenLogs: () => { void shell.openPath(paths.logDir) },
+          onReenable: () => { guard?.reEnableAll(); void sidecar?.restart() },
+        }).then(() => guard?.markReported()).catch(() => { /* 弹窗被窗口销毁打断等：报告留台账，托盘可重开 */ })
+      }
+      if (win === undefined) { showPending(); return }
+      const fallbackTimer = setTimeout(showPending, 3_000)
+      win.webContents.once('did-finish-load', () => { clearTimeout(fallbackTimer); showPending() })
+    })
     // 皮肤卸载残留自愈（skin-selfheal.ts 头注释有完整上游事实）：启用中卸载皮肤包
     // 会留下 managed 块 + 悬空链接，下次启动 loader 导入失败、整树拒绝。特征唯一、
     // 修复确定，crashed 时同步修完，管理器自带的退避重启（1s 起）拉起的就是干净状态，
@@ -213,6 +268,14 @@ if (!gotLock) {
         runHealer('skin heal', () => healSkins())
         // terminal：管理器已放弃重启，对修复失败过的包再给一次机会。
         runHealer('bundle heal', () => bundleHealer?.consider({ terminal: state === 'failed' }))
+        // 插件守卫排在两个自愈器之后（读的是它们修复后的最新状态）：诊断崩溃日志 →
+        // 隔离问题插件。有新隔离且已落 failed 终态时显式拉起（restart 清零重启预算）；
+        // crashed 则由管理器自带的退避重启接管（隔离是同步 fs 操作，必然赶在 respawn 前）。
+        runHealer('plugin guard', () => {
+          if (guard === undefined) return
+          const { quarantinedNew } = guard.considerCrash({ terminal: state === 'failed' })
+          if (quarantinedNew && sidecar?.state === 'failed') void sidecar.restart()
+        })
       }
     })
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
