@@ -83,11 +83,14 @@ if (!gotLock) {
     // 插件管理已由 Web UI 内的 dshmarket 接管（设置页直达，无 URL 路由可深链，故不设托盘入口）；
     // 「重启服务」承接市场的待重启提示（market 自重启已通过配置关闭，重启必须走 sidecar.restart 保持监督）。
     // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
+    // updater 声明在托盘之前：「检查更新」菜单项回调引用它，而构造在下方 isPackaged 分支。
+    let updater: UpdaterController | undefined
     const tray = new TrayController({
       iconPath: join(__dirname, '../../resources/icon.png'),
       logDir: paths.logDir,
       onShow: () => { windows?.focus() },
       onRestart: () => { void sidecar?.restart() },
+      onCheckUpdates: () => { void updater?.checkNow() },
       onQuit: () => { app.quit() },
     })
     if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
@@ -222,11 +225,12 @@ if (!gotLock) {
     // 自动更新（设计书 §8）：默认检查本仓库的 GitHub Releases（v0.1.0 起资产带 latest.yml），
     // DSH_DESKTOP_FEED_URL 可覆盖为任意 generic feed（本地测试/未来迁移）；仅打包启用。
     if (app.isPackaged) {
-      new UpdaterController({
+      updater = new UpdaterController({
         feed: process.env.DSH_DESKTOP_FEED_URL ?? { provider: 'github', owner: 'qinyre', repo: 'dsh-Desktop' },
         dshHome: paths.dshHome ?? '',
         backupRoot: join(paths.userDataDir, 'backups'),
-      }).start()
+      })
+      updater.start()
     }
 
     sidecar.start()

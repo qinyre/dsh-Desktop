@@ -1,4 +1,4 @@
-import { dialog } from 'electron'
+import { app, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { backupDshHome } from './backup-home'
 
@@ -8,7 +8,38 @@ import { backupDshHome } from './backup-home'
 export type Feed = string | { provider: 'github'; owner: string; repo: string }
 
 export class UpdaterController {
+  private checking = false
+
   constructor(private readonly opts: { feed?: Feed; dshHome: string; backupRoot: string }) {}
+
+  /**
+   * 托盘「检查更新」：手动触发一次检查，结果以对话框反馈。自动路径不变——
+   * 发现新版本时 autoDownload 照常在后台拉取，就绪后仍由 update-downloaded
+   * 的「稍后/立即安装」弹窗接管。checking 单飞：启动检查与手动点击、连点
+   * 并发时只跑一个，其余静默忽略（electron-updater 自身不排队，并发检查
+   * 会互相打断报错）。
+   */
+  async checkNow(): Promise<void> {
+    if (!this.opts.feed) {
+      await dialog.showMessageBox({ type: 'info', title: '检查更新', message: '当前构建未启用更新检查。', buttons: ['好'] })
+      return
+    }
+    if (this.checking) return
+    this.checking = true
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      const latest = result?.updateInfo.version
+      if (latest !== undefined && latest !== app.getVersion()) {
+        await dialog.showMessageBox({ type: 'info', title: '发现新版本', message: `发现新版本 ${latest}，正在后台下载，完成后会询问是否安装。`, buttons: ['好'] })
+      } else {
+        await dialog.showMessageBox({ type: 'info', title: '检查更新', message: `当前已是最新版本（${app.getVersion()}）。`, buttons: ['好'] })
+      }
+    } catch (error) {
+      await dialog.showMessageBox({ type: 'warning', title: '检查更新', message: `检查失败：${String(error)}`, buttons: ['好'] })
+    } finally {
+      this.checking = false
+    }
+  }
 
   start(): void {
     if (this.opts.feed === undefined || this.opts.feed === '') return // 显式置空：禁用更新检查
