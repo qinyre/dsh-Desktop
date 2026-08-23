@@ -31,7 +31,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
 - Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
-- Plugin failures no longer prevent the app from starting: conflicts, missing dependencies, runtime errors, and corrupt plugin configuration are detected and quarantined automatically, with a dialog identifying the affected plugin and the cause. When no cause can be determined, a safe mode temporarily disables all installed plugins so the client still starts, and plugin health continues to be monitored after launch.
+- Plugin failures no longer prevent the app from starting: the offending plugin is detected, quarantined, and explained in a dialog — see [Plugin guard](#plugin-guard).
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
@@ -75,15 +75,15 @@ Adds a "Skills & MCP" section to the settings page, level with Models and Plugin
 
 An "Archive management" section in Settings — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump.
 
-### When a plugin misbehaves
+> Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
+
+## Plugin guard
 
 dsh activates its plugin tree as a whole: a single plugin that fails to import, conflicts with another (for example, two plugins registering the same entry id), or lacks a dependency prevents the entire service from starting. DSH Desktop therefore performs a static check before launch — including verification of plugin package integrity, so plugins left incomplete by an interrupted install are disabled in advance — and, if the service still fails to boot, locates the specific plugin from the crash log, disables it, and restarts automatically. In most cases the only noticeable effect is a slightly slower startup: the app opens as usual and a dialog identifies the quarantined plugin and the reason.
 
 Some crashes leave no diagnostic trace — for example, a plugin terminating the process through native code, or hanging during startup without any output. After two consecutive failures of this kind, DSH Desktop enters a safe mode: all installed plugins are disabled and only the bundled base remains, so the client can still start, with the reason stated in the dialog. If startup fails even in safe mode, the report states plainly that the problem most likely lies outside plugins. Quarantine records remain available in the tray menu's plugin report and can be re-enabled with one click once a plugin is believed to be fixed; a plugin that is still broken is simply quarantined again and never locks up the app.
 
 The guard remains active after launch: plugin health is checked periodically, plugins that fail at runtime are disabled and recorded immediately, and plugins left waiting indefinitely for a service that never arrives are also recorded, to appear in the next quarantine report.
-
-> Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 
 ## How it works
 
