@@ -121,13 +121,11 @@ Dev mode resolves the upstream checkout at `../deepseek-harness` (override with 
 
 ### Known patches
 
-`patches/` carries five patches declared as pnpm patchedDependencies, applied automatically by `pnpm install`; a dsh upgrade that breaks any of them fails loudly at install time instead of silently regressing.
+The five patch files under `patches/` implement three fixes, declared as pnpm patchedDependencies and applied automatically by `pnpm install`; a dsh upgrade that breaks any of them fails loudly at install time instead of silently regressing. Full background and rationale: [docs/patches.md](docs/patches.md).
 
-**Brick-proof boot (dsh-app-boot)**: when a profile-declared bundle is missing on disk (the typical debris of an interrupted plugin update), dsh's loader throws during import and refuses to boot the whole tree. The patch downgrades a single bundle's resolution failure to skip + warning; together with the shell's pre-boot audit, crash self-healers, and the plugin guard, a broken plugin can no longer take the whole app down.
-
-**Workspace picker (koffi)**: dsh's Win32 directory-picker worker read the selected path with `koffi.view()`, which triggers a fatal error under Electron's embedded Node (`Error::New napi_get_last_error_info`; plain Node is unaffected) — packaged builds failed with "win32 folder dialog worker exited before reporting a result" right after a folder was picked. The patch switches the read to per-unit `koffi.decode()`; `pnpm run smoke:picker` verifies it in a real `ELECTRON_RUN_AS_NODE` child.
-
-**Console windows (windowsHide / SW_HIDE)**: the fix has two layers. First, dsh's subprocess execution — the agent tools' spawn, the process-tree taskkill, and the pnpm calls for plugin installs (including the CLI's plugin forwarder) — never set `windowsHide: true`; under the dsh CLI children inherit the caller's console, but DSH Desktop is a GUI process with no console to inherit, so every call opened a console window. The patch adds it at four sites (three in dsh-subprocess-local, one in dsh's plugin forwarder). Second, the Windows sandbox runner (restricted token) launches the actual command via native `CreateProcessAsUserW`, whose auto-created console window no node option controls — the patch hides it with `STARTF_USESHOWWINDOW|SW_HIDE` in STARTUPINFO. CREATE_NO_WINDOW/DETACHED_PROCESS were rejected: measured on the real chain, both make PowerShell (5.1 and 7 alike) silently drop piped output when running console-less (cmd is unaffected). `pnpm run smoke:hideconsole` covers both layers: patch presence assertions, plus powershell runs through dsh's public subprocess API and the real ACL runner in a real `ELECTRON_RUN_AS_NODE` child, checking output collection and the terminate path.
+- **Brick-proof boot (dsh-app-boot)**: a missing plugin package (debris of an interrupted update) no longer rejects the whole loader tree; the bundle is skipped with a warning.
+- **Workspace picker (koffi)**: fixes the worker crash after picking a workspace folder in packaged builds; verified by `pnpm run smoke:picker`.
+- **Console windows (windowsHide / SW_HIDE)**: a GUI process has no console to inherit, so dsh's subprocess calls and the sandbox runner used to flash a black console window on every invocation; fixed on two layers, verified by `pnpm run smoke:hideconsole`.
 
 ### Project layout
 
