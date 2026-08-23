@@ -21,7 +21,8 @@
     "dist": "electron-vite build && electron-builder --win nsis --publish never",
     "dist:signed": "node scripts/check-signing-env.mjs && electron-vite build && electron-builder --win nsis --config electron-builder.signed.mjs && node scripts/verify-signature.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "verify:bundle": "node scripts/verify-bundle.mjs"
+    "verify:bundle": "node scripts/verify-bundle.mjs",
+    "smoke:tray": "vitest run -t \"tray plugin manager smoke\""
   },
   "dependencies": {
     "@deepseek-ai/cordis-plugin-group": "^1.0.1",

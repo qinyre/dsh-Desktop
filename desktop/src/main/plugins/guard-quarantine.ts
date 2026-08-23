@@ -32,16 +32,15 @@ function backupAlways(path: string): void {
   copyFileSync(path, bak)
 }
 
-/** 打开（或初始化）home patch 层的文档树；无法解析时 throw——绝不落盘可能写坏的层。 */
-function homePatchDoc(dshHome: string): { doc: ReturnType<typeof parseDocument>; seq: YAMLSeq; path: string } {
-  const path = join(dshHome, 'cordis.patch.yml')
+/** 打开（或初始化）一个用户 patch 层的文档树；无法解析时 throw——绝不落盘可能写坏的层。 */
+function patchLayerDoc(path: string): { doc: ReturnType<typeof parseDocument>; seq: YAMLSeq; path: string } {
   const content = existsSync(path) ? readFileSync(path, 'utf8') : ''
   const doc = parseDocument(content)
   if (doc.errors.length > 0) {
-    throw new Error(`home cordis.patch.yml does not parse: ${doc.errors[0]?.message ?? String(doc.errors[0])}`)
+    throw new Error(`patch layer does not parse: ${path}: ${doc.errors[0]?.message ?? String(doc.errors[0])}`)
   }
   if (doc.contents !== null && !(doc.contents instanceof YAMLSeq)) {
-    throw new Error('home cordis.patch.yml: root is not a list of patch rows')
+    throw new Error(`${path}: root is not a list of patch rows`)
   }
   const seq: YAMLSeq = doc.contents instanceof YAMLSeq ? doc.contents : new YAMLSeq() as never
   if (doc.contents === null) doc.contents = seq as never
@@ -92,14 +91,15 @@ function asInsertItems(item: YAMLMap): unknown[] {
 }
 
 /**
- * 在 home 层追加隔离行（`- id: X` + `disabled: true`，带 managed 块注释）。
- * 幂等：home 层内已停用的 id 跳过；返回值只含真正新写入的 id。
+ * 在 home 层追加带 managed 注释的停用裸行（`- id: X` + `disabled: true`）。
+ * 幂等：home 层内已停用的 id（任何来源）跳过；返回值只含真正新写入的 id。
+ * marker 用于归属（守卫隔离 / 托盘手动停用各自的注释标记）。
  */
-export function quarantineEntries(opts: { dshHome: string; ids: readonly string[] }): { written: string[] } {
-  const { doc, seq, path } = homePatchDoc(opts.dshHome)
+export function disableEntries(opts: { dshHome: string; ids: readonly string[]; marker: string }): { written: string[] } {
+  const { doc, seq, path } = patchLayerDoc(join(opts.dshHome, 'cordis.patch.yml'))
   const already = disabledIdsInDoc(seq)
   const ours = new Set(seq.items
-    .filter((item): item is YAMLMap => item instanceof YAMLMap && (item.commentBefore ?? '').includes(QUARANTINE_MARKER))
+    .filter((item): item is YAMLMap => item instanceof YAMLMap && (item.commentBefore ?? '').includes(opts.marker))
     .map(item => item.get('id'))
     .filter((id): id is string => typeof id === 'string'))
   const written: string[] = []
@@ -108,7 +108,7 @@ export function quarantineEntries(opts: { dshHome: string; ids: readonly string[
     const row = new YAMLMap()
     row.set('id', id)
     row.set('disabled', true)
-    row.commentBefore = ` --- ${QUARANTINE_MARKER} ---`
+    row.commentBefore = ` --- ${opts.marker} ---`
     seq.items.push(row)
     written.push(id)
   }
@@ -117,10 +117,15 @@ export function quarantineEntries(opts: { dshHome: string; ids: readonly string[
   return { written }
 }
 
+export function quarantineEntries(opts: { dshHome: string; ids: readonly string[] }): { written: string[] } {
+  return disableEntries({ ...opts, marker: QUARANTINE_MARKER })
+}
+
 /** 移除全部隔离行（重新启用）；返回被移除的 id。 */
 export function removeQuarantine(opts: { dshHome: string }): { removed: string[] } {
-  if (!existsSync(join(opts.dshHome, 'cordis.patch.yml'))) return { removed: [] }
-  const { doc, seq, path } = homePatchDoc(opts.dshHome)
+  const path = join(opts.dshHome, 'cordis.patch.yml')
+  if (!existsSync(path)) return { removed: [] }
+  const { doc, seq } = patchLayerDoc(path)
   const removed: string[] = []
   const keep: YAMLSeq['items'] = []
   for (const item of seq.items) {
@@ -175,6 +180,84 @@ export function repairCorruptLayers(opts: { dshHome: string; paths: readonly str
     reset.push(path)
   }
   return { reset }
+}
+
+/**
+ * 停用覆盖裸行的判定：`disabled: true` 且键集合 ⊆ {id, name, disabled}。键集合限制是硬约束：
+ * dsh-plugin-capabilities 的 legacy 顶层 MCP 行形状为 {id, name, config, disabled}，宽谓词
+ * （只看 disabled+无 insert）会把用户 MCP 服务器定义连 config 一起删掉。带 config 或任何
+ * 多余键的行不是停用覆盖行，一律不碰。
+ */
+function isBareDisableRow(item: YAMLMap): boolean {
+  if (item.get('disabled') !== true) return false
+  const id = item.get('id')
+  if (typeof id !== 'string' || id === '') return false
+  for (const pair of item.items) {
+    const key = String(pair.key)
+    if (key !== 'id' && key !== 'name' && key !== 'disabled') return false
+  }
+  return true
+}
+
+/** 从一层删停用裸行（targets 为空 = 全删）。文件不存在/无命中行时不写盘（不惊扰 live watcher）。 */
+function stripDisableRows(path: string, targets: ReadonlySet<string> | undefined): string[] {
+  if (!existsSync(path)) return []
+  const { doc, seq } = patchLayerDoc(path)
+  const removed: string[] = []
+  const keep: YAMLSeq['items'] = []
+  for (const item of seq.items) {
+    if (item instanceof YAMLMap && isBareDisableRow(item)) {
+      const id = item.get('id') as string
+      if (targets === undefined || targets.has(id)) {
+        removed.push(id)
+        continue
+      }
+    }
+    keep.push(item)
+  }
+  if (removed.length === 0) return []
+  seq.items = keep
+  renderAndWrite(doc, seq, path)
+  return removed
+}
+
+/** 层文件路径（home 层与 profile 用户层——托盘启用/守卫隔离共涉的两层）。 */
+function layerPaths(dshHome: string): string[] {
+  return [join(dshHome, 'cordis.patch.yml'), join(dshHome, 'profiles', 'web', 'cordis.patch.yml')]
+}
+
+/**
+ * 启用条目：删 home+profile 两层中这些 id 的一切停用裸行（守卫行、托盘行、页面内插件
+ * 管理器写的 {id, name, disabled} 行——不区分来源，否则「启用」会被残留行静默抵消）。
+ * insert 行与带 config 的行由 isBareDisableRow 的键集合限制天然不可误伤。
+ */
+export function enableEntries(opts: { dshHome: string; ids: readonly string[] }): { removed: string[] } {
+  const targets = new Set(opts.ids)
+  return { removed: layerPaths(opts.dshHome).flatMap(path => stripDisableRows(path, targets)) }
+}
+
+/** 全部启用：删两层中全部停用裸行（无 id 过滤，同键集合限制）。 */
+export function enableAllEntries(opts: { dshHome: string }): { removed: string[] } {
+  return { removed: layerPaths(opts.dshHome).flatMap(path => stripDisableRows(path, undefined)) }
+}
+
+/**
+ * 把 bundle 加回 profile 的 dsh.profile.bundles（bundle 级隔离的逆操作；guard 只移不还——
+ * 恢复入口在托盘，守卫在下次崩溃/预检时会再移出真正损坏者，是安全网）。bundles 只在 boot
+ * 读取，调用方写后必须重启 sidecar 才生效。失败契约同 quarantineBundles（manifest 缺失/
+ * 无 bundles 列表时 throw）。追加到列表尾部（原次序已随移除丢失）。
+ */
+export function restoreBundles(opts: { dshHome: string; names: readonly string[] }): { written: string[] } {
+  const manifestPath = join(opts.dshHome, 'profiles', 'web', 'package.json')
+  const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dsh?: { profile?: { bundles?: unknown } } }
+  const bundles = parsed.dsh?.profile?.bundles
+  if (!Array.isArray(bundles)) throw new Error(`profile manifest has no dsh.profile.bundles list: ${manifestPath}`)
+  const add = opts.names.filter((name): name is string => typeof name === 'string' && !bundles.includes(name))
+  if (add.length === 0) return { written: [] }
+  backupOnce(manifestPath)
+  parsed.dsh!.profile!.bundles = [...bundles, ...add]
+  writeFileSync(manifestPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8')
+  return { written: add }
 }
 
 /** home+profile 两层中现处停用态的 entry id 并集（供幂等判定与断言）。 */

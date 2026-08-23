@@ -15,6 +15,7 @@ import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
 import { applyMarketConfig, atlasSeeded, ATLAS_SPEC, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedBundle, seedPendingPlugins } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
+import { TrayPluginSection } from './tray/tray-plugin-section'
 import { UpdaterController } from './updater/updater-controller'
 import { WindowController } from './windows/window-controller'
 
@@ -91,10 +92,13 @@ if (!gotLock) {
       logger.appendLine(`[dsh-desktop] pnpm shim unavailable (${String(error)}); plugin installs will need a system pnpm`)
     }
     // 托盘（设计书 §5）：关闭=隐藏到托盘（首次隐藏弹一次气泡），退出走托盘菜单（sidecar 一并结束）。
-    // 插件管理已由 Web UI 内的 dshmarket 接管（设置页直达，无 URL 路由可深链，故不设托盘入口）；
-    // 「重启服务」承接市场的待重启提示（market 自重启已通过配置关闭，重启必须走 sidecar.restart 保持监督）。
+    // 插件日常管理在 Web UI 内的 dshmarket（设置页直达，无 URL 路由可深链）；托盘「插件管理」
+    // 是页面打不开时的架构级逃生通道（逐插件启停/手动安全模式/恢复移出清单），不依赖页面与
+    // sidecar 存活。「重启服务」承接市场的待重启提示（market 自重启已通过配置关闭，重启必须走
+    // sidecar.restart 保持监督）。
     // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
     // updater 声明在托盘之前：「检查更新」菜单项回调引用它，而构造在下方 isPackaged 分支。
+    let trayPlugins: TrayPluginSection | undefined
     let updater: UpdaterController | undefined
     const tray = new TrayController({
       iconPath: join(__dirname, '../../resources/icon.png'),
@@ -102,6 +106,7 @@ if (!gotLock) {
       onShow: () => { windows?.focus() },
       onRestart: () => { void sidecar?.restart() },
       onCheckUpdates: () => { void updater?.checkNow() },
+      pluginSection: paths.dshHome === undefined ? undefined : () => trayPlugins?.build(),
       onGuardReport: () => {
         const g = guard
         if (g === undefined) return
@@ -120,6 +125,27 @@ if (!gotLock) {
       onQuit: () => { app.quit() },
     })
     if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
+    // 托盘插件管理分区：watcher 首挂此刻大概率 ENOENT（profiles/web 由下方审计/预装创建），
+    // 懒挂载+退避重试自行消化；guard/sidecar 均 let 先引用后赋值，点击时已就位。
+    if (paths.dshHome !== undefined) {
+      trayPlugins = new TrayPluginSection({
+        dshHome: paths.dshHome,
+        logDir: paths.logDir,
+        restartSidecar: () => { void sidecar?.restart() },
+        notify: (title, content) => { tray.notify(title, content) },
+        refreshTray: () => { tray.refresh() },
+        guardReEnableAll: () => { guard?.reEnableAll() },
+        bundleRemoveReason: (name) => {
+          const found = guard?.findings().find(f => f.bundle === name)
+          return found?.reason
+        },
+        log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
+      })
+      trayPlugins.start()
+      // attach() 先于本段构造，初始菜单里没有插件管理项——这里补一次重建（否则稳态
+      // 健康启动下若无外部写文件，该段要等到下次状态变化才出现）。
+      tray.refresh()
+    }
     ipcMain.on('dsh:retry', () => sidecar?.retry())
     ipcMain.on('dsh:open-logs', () => { void shell.openPath(paths.logDir) })
     // Web UI 内插件（dsh-plugin-install 的「重启服务」按钮）请求重启：sidecar 受
@@ -190,10 +216,12 @@ if (!gotLock) {
       log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
       // 运行期新隔离的即时通知（ready 态才气泡；boot 态发现留给 ready 弹窗）。
       // 气泡即视为已告知：markReported 清 unreported，防下次 ready 对同条再弹一次。
+      // 守卫写了隔离行 → 托盘插件管理菜单的状态需要重建。
       onNewFindings: (added) => {
         if (sidecar?.state !== 'ready') return
         tray.notify('DSH 插件守卫', `已自动处理 ${added.length} 个插件问题（${added.map(f => f.name ?? f.bundle ?? f.id ?? f.key).slice(0, 3).join('、')}），详情见托盘「插件隔离报告」。`)
         guard?.markReported()
+        tray.refresh()
       },
     })
     if (guard !== undefined) {
@@ -352,7 +380,7 @@ if (!gotLock) {
     // before-quit 监听不会重复注册（与下方 sidecar 的 before-quit 互不影响）。
     const eventTap = new EventTap({ getMainWindow: () => windows?.mainWindow })
     eventTap.attach(sidecar)
-    app.on('before-quit', () => { eventTap.close(); runtimeMonitor?.stop() })
+    app.on('before-quit', () => { eventTap.close(); runtimeMonitor?.stop(); trayPlugins?.dispose() })
 
     // 自动更新（设计书 §8）：默认检查本仓库的 GitHub Releases（v0.1.0 起资产带 latest.yml），
     // DSH_DESKTOP_FEED_URL 可覆盖为任意 generic feed（本地测试/未来迁移）；仅打包启用。

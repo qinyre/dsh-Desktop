@@ -164,6 +164,24 @@ export function findDuplicateEntryIds(table: LayerTable): string[] {
 }
 
 /**
+ * 「用户域」行 id：tracked bundle 行 + profile/home 用户层非 bundle 行。守卫的自动停用
+ * （安全模式、运行期 failed）与托盘的手动停用共用此口径——系统级 bundle（dsh-base 等模板件）
+ * 绝不出现在停用名单里。不含「已停用」过滤，调用方按需叠加。
+ */
+export function userDomainRowIds(table: LayerTable): string[] {
+  const tracked = new Set(table.tracked)
+  const ids: string[] = []
+  for (const row of table.rows) {
+    if (isBundleRow(row.source)) {
+      const bundle = bundleNameOfRowSource(row.source)
+      if (bundle === undefined || !tracked.has(bundle)) continue
+    }
+    ids.push(row.id)
+  }
+  return ids
+}
+
+/**
  * 同名不同 id 的重复组合（name 对 loader 合法、group 只查重 id，但双行 = 同模块
  * 双 apply：服务/locale 命名空间级冲突的温床）。排除已失效行（insert 自带 disabled
  * 或被裸行 {id, disabled} 覆盖——后者含守卫自己的历史隔离行，不排除会每轮误报）。

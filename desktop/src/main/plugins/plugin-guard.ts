@@ -1,5 +1,5 @@
 import { basename, join, sep } from 'node:path'
-import { bundleNameOfRowSource, findDuplicateEntryIds, findDuplicateNames, isBundleRow, readLayerTable, type LayerTable } from './patch-layers'
+import { bundleNameOfRowSource, findDuplicateEntryIds, findDuplicateNames, isBundleRow, readLayerTable, userDomainRowIds, type LayerTable } from './patch-layers'
 import { diagnoseLog, RE_CONFLICT_DETAIL, type GuardCategory, type GuardFinding } from './guard-diagnose'
 import { disabledEntryIds, quarantineBundles, quarantineEntries, repairCorruptLayers, removeQuarantine } from './guard-quarantine'
 import { GuardLedgerStore } from './guard-ledger'
@@ -273,16 +273,7 @@ export class PluginGuard {
    */
   private enterSafeMode(table: LayerTable): boolean {
     const disabled = disabledEntryIds({ dshHome: this.opts.dshHome })
-    const tracked = new Set(table.tracked)
-    const ids = new Set<string>()
-    for (const row of table.rows) {
-      if (disabled.has(row.id)) continue
-      if (isBundleRow(row.source)) {
-        const bundle = bundleNameOfRowSource(row.source)
-        if (bundle === undefined || !tracked.has(bundle)) continue
-      }
-      ids.add(row.id)
-    }
+    const ids = new Set(userDomainRowIds(table).filter(id => !disabled.has(id)))
     let written: string[] = []
     if (ids.size > 0) {
       try {
@@ -358,15 +349,7 @@ export class PluginGuard {
       const fiberlessConfirmed = fiberless.filter(e => (this.nullFiberStreaks.get(e.entryId) ?? 0) >= 2)
       if (failed.length === 0 && pending.length === 0 && fiberlessConfirmed.length === 0) return
       const table = readLayerTable({ dshHome: this.opts.dshHome, profile: this.opts.profile })
-      const tracked = new Set(table.tracked)
-      const userDomain = new Set<string>()
-      for (const row of table.rows) {
-        if (isBundleRow(row.source)) {
-          const bundle = bundleNameOfRowSource(row.source)
-          if (bundle === undefined || !tracked.has(bundle)) continue
-        }
-        userDomain.add(row.id)
-      }
+      const userDomain = new Set(userDomainRowIds(table))
       const findings: GuardFinding[] = []
       const quarantineIds: string[] = []
       for (const e of failed) {

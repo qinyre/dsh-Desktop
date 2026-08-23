@@ -32,6 +32,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
 - Built-in plugin guard: four problem classes — conflicts, missing dependencies, plugin errors, and corrupt configuration — are detected before and after launch, both in the service and in the in-page plugin tree; the offending plugin is quarantined so the app still opens, with a dialog naming the plugin and the cause. Safe mode kicks in when no cause can be found, and plugin health keeps being monitored after launch — see [Plugin guard](#plugin-guard).
+- Plugins can be managed straight from the tray: when a plugin failure keeps the page from loading at all, the in-app plugin manager goes down with it — the tray's "Plugins" section needs neither the service nor the page to list every plugin's state, disable or re-enable them individually, enter safe mode manually, or restore packages the guard removed from the launch list.
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 
@@ -85,6 +86,8 @@ One class of trouble only shows up inside the page. The web UI runs a plugin tre
 
 Some crashes leave no diagnostic trace — for example, a plugin terminating the process through native code, or hanging during startup without any output. After two consecutive failures of this kind, DSH Desktop enters a safe mode: all installed plugins are disabled and only the bundled base remains, so the client can still start, with the reason stated in the dialog. If startup fails even in safe mode, the report states plainly that the problem most likely lies outside plugins. Quarantine records remain available in the tray menu's plugin report and can be re-enabled with one click once a plugin is believed to be fixed; a plugin that is still broken is simply quarantined again and never locks up the app.
 
+Everything above assumes the in-app interface is eventually reachable — yet the plugin page itself is a plugin, and when the failure is bad enough that the page never loads, it is of no help. The tray menu therefore carries an independent "Plugins" section that works without the service and without any page: it lists all installed plugins with their enabled state (noting whether each was disabled by the guard, from the in-app page, or by hand), disables or re-enables them one by one, enters safe mode on demand, and brings everything back in one click. Every change is followed by an automatic service restart so it takes effect deterministically; rapid consecutive actions merge into one restart. Damaged packages the guard removed from the launch list appear here too and can be readmitted after a confirmation, with a restart to verify — if they really are broken, the guard removes them again.
+
 The guard remains active after launch: plugin health is checked periodically, plugins that fail at runtime are disabled and recorded immediately, and plugins left waiting indefinitely for a service that never arrives are also recorded, to appear in the next quarantine report. A plugin that fails to mount while the service keeps running — the failure lands only in the log — is caught by a periodic log patrol and announced with a tray notification.
 
 ## How it works
@@ -110,6 +113,7 @@ pnpm run dev            # launch the app (dev uses the source checkout)
 pnpm test               # unit tests
 pnpm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
 pnpm run smoke:guard    # plugin-guard full-chain smoke: mock plugins inject conflicts, missing deps, and crashes; asserts auto-quarantine then a clean boot
+pnpm run smoke:tray     # tray plugin manager smoke: disables/enables plugins against a live sidecar, asserts live application and restore round-trip
 DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # clean-PATH market seed smoke (Windows)
 pnpm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
 pnpm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
