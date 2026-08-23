@@ -31,7 +31,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
 - Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
-- Plugin failures no longer prevent the app from starting: the offending plugin is detected, quarantined, and explained in a dialog — see [Plugin guard](#plugin-guard).
+- Built-in plugin guard: four problem classes — conflicts, missing dependencies, plugin errors, and corrupt configuration — are detected before and after launch; the offending plugin is quarantined so the app still opens, with a dialog naming the plugin and the cause. Safe mode kicks in when no cause can be found, and plugin health keeps being monitored after launch — see [Plugin guard](#plugin-guard).
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
 - Updates ask before installing and back up your sessions, credentials, and settings beforehand.
 

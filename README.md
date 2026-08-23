@@ -31,7 +31,7 @@ DeepSeek Harness 自带一流的 Web UI，但它假定用户具备一套开发�
 - sidecar 有监督重启（指数退避），进程崩溃后自动重新拉起；dsh 的 append-only 会话日志也保证对话不丢。
 - 窗口隐藏或失焦时，等待中的审批和回合结束会发 Windows 原生通知；窗口可以关闭到托盘，长任务在后台继续。
 - 首次启动预装四个插件：可视化插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）、任意包名直装的「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）、「技能与 MCP」管理分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）、归档管理与对话刻度尺（[dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)），详见[插件](#插件)。
-- 插件异常不再影响应用启动：问题插件会被自动识别、隔离并在弹窗中说明原因，机制见[插件运行保障](#插件运行保障)。
+- 内建插件运行保障：冲突、依赖缺失、插件自身错误、配置损坏四类问题在启动前后都会被自动识别，问题插件被隔离以保证应用照常打开，弹窗说明受影响的插件与原因；原因无法定位时由安全模式兜底，启动后仍持续监测各插件的运行状态，机制详见[插件运行保障](#插件运行保障)。
 - 原生标题栏跟随 Web UI 的明暗主题变色（Windows 11 上与页面同色，Windows 10 上跟随深浅）。
 - 更新安装前会先询问，并自动备份会话、凭据和设置。
 
