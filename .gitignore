@@ -26,3 +26,9 @@ out/
 /dsh-plugin-capabilities/
 /.tmp-npm-check/
 /dsh-plugin-atlas/
+
+# 浏览器自动化产物、零散截图与未定稿的上游文档镜像（含生成脚本），不纳入本仓库
+/.playwright-mcp/
+/desktop-app-window.png
+/docs/guide/
+/scripts/
