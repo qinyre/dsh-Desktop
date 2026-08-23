@@ -78,10 +78,11 @@ export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.5'
  * + 对话区左缘的鱼眼刻度尺；0.2.0 起管理面板从侧边栏抽屉迁入设置页，0.2.1 起输入框 ↑/↓
  * 翻找输入历史，0.2.2 起切换会话时历史回填改为空闲帧步进、↑/↓ 仅在光标位于文本
  * 开头/末尾时触发，0.2.3 起刻度数据改由宿主半边 /rail 路由从持久日志折叠，
- * 不再把整段历史拉进聊天窗口——切换会话恒定只渲染尾窗）。纯 HTTP 路由
+ * 不再把整段历史拉进聊天窗口——切换会话恒定只渲染尾窗，0.2.4 起归档列表
+ * 行名优先取日志内 session/title（与侧栏同名源）而非首条消息）。纯 HTTP 路由
  * 与 UI 扩展，无重启、无自更新路径，无需任何 patch 配置覆盖。同样只在预装时钉住。
  */
-export const ATLAS_SPEC = 'dsh-plugin-atlas@0.2.3'
+export const ATLAS_SPEC = 'dsh-plugin-atlas@0.2.4'
 
 /** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
 export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
