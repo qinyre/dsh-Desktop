@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { PluginGuard } from './plugin-guard'
+import type { GuardFinding } from './guard-diagnose'
 import { disabledEntryIds } from './guard-quarantine'
 
 function writeBundle(home: string, name: string, patch: string): void {
@@ -294,5 +295,214 @@ describe('PluginGuard', () => {
     expect(byKey.has('runtime:mock-off')).toBe(false)
     expect(byKey.has('runtime:mock-ok')).toBe(false)
     expect(guard.findings().filter(f => f.key === 'runtime:mock-crash')).toHaveLength(1) // 台账按 key 合并
+  })
+
+  it('considerRuntime records a fiberless enabled entry only after two consecutive ticks', () => {
+    const home = join(root, 'fiberless')
+    writeBundle(home, 'mock-crash', '- insert:\n  - id: mock-crash\n    name: mock-crash\n')
+    writeManifest(home, ['mock-crash'], ['mock-crash'])
+    const { guard } = makeGuard(home)
+    const entry = { entryId: 'mock-crash', moduleName: 'mock-crash', enabled: true, fiberPhase: null as string | null }
+    guard.considerRuntime([entry]) // 首轮：可能只是加载瞬态，不记账
+    expect(guard.findings()).toEqual([])
+    guard.considerRuntime([entry]) // 次轮仍在：记账（只报告，不停用——行已写入则 disabled 过滤）
+    expect(guard.findings().some(f => f.key === 'runtime:mock-crash' && f.reason.includes('无运行实例'))).toBe(true)
+    // 恢复后连击清零；再出现要重新凑两轮。
+    guard.considerRuntime([{ ...entry, fiberPhase: 'active' }])
+    guard.considerRuntime([entry])
+    expect(guard.findings().filter(f => f.key === 'runtime:mock-crash')).toHaveLength(1) // 合并不重复
+  })
+
+  // ── 客户端插件树（渲染器）通道：本次修复的主战场 ──────────────────────────────
+  // 真实事故形态：预装 dshmarket 与后装 @linxin666/dsh-client-ui-market 都注册 locale
+  // ns "dsh-market"，后装者在浏览器 apply 时抛 already has locale → 客户端 boot 卡死。
+  it('considerClientConsole quarantines by module name, not the per-page random client id', () => {
+    const home = join(root, 'client')
+    writeBundle(home, 'dshmarket', '- insert:\n  - id: dsh-market\n    name: dshmarket\n')
+    writeBundle(home, '@linxin666/dsh-client-ui-market', '- insert:\n  - id: ui-market\n    name: \'@linxin666/dsh-client-ui-market\'\n')
+    writeManifest(home, ['dshmarket', '@linxin666/dsh-client-ui-market'], ['dshmarket', '@linxin666/dsh-client-ui-market'])
+    const { guard } = makeGuard(home)
+    const r1 = guard.considerClientConsole('failed to apply loader entry 245d29eb (@linxin666/dsh-client-ui-market): Error: locale namespace "dsh-market" already has locale "zh"')
+    expect(r1).toEqual({ relevant: true, acted: true, resolvable: true })
+    const disabled = disabledEntryIds({ dshHome: home })
+    expect(disabled.has('ui-market')).toBe(true) // 按名反查宿主行
+    expect(disabled.has('245d29eb')).toBe(false) // 绝不写客户端随机 id 的惰性行
+    expect(disabled.has('dsh-market')).toBe(false) // 先注册者（预装）不受牵连
+    const finding = guard.findings().find(f => f.key === 'client:@linxin666/dsh-client-ui-market')
+    expect(finding).toMatchObject({ id: 'ui-market', name: '@linxin666/dsh-client-ui-market', category: 'conflict', source: 'client' })
+    // reload 后复现（新随机 id、行已写）：relevant/resolvable 仍真（重试依据），acted 假、台账不膨胀。
+    const r2 = guard.considerClientConsole('failed to apply loader entry 9a8b7c6d (@linxin666/dsh-client-ui-market): Error: locale namespace "dsh-market" already has locale "zh"')
+    expect(r2).toEqual({ relevant: true, acted: false, resolvable: true })
+    expect(guard.findings().filter(f => f.key === 'client:@linxin666/dsh-client-ui-market')).toHaveLength(1)
+  })
+
+  it('considerClientConsole reports unresolvable plugins without writing a lazy row, and gates on signatures', () => {
+    const home = join(root, 'client-unresolvable')
+    mkdirSync(home, { recursive: true })
+    const { guard } = makeGuard(home)
+    // 名字不在层表、id 也不在层表：report-only，绝不落行。
+    const r = guard.considerClientConsole('failed to apply loader entry deadbeef (@nobody/ghost-market): Error: locale namespace "x" already has locale "zh"')
+    expect(r).toEqual({ relevant: true, acted: false, resolvable: false })
+    expect(existsSync(join(home, 'cordis.patch.yml'))).toBe(false)
+    const finding = guard.findings().find(f => f.key === 'client:@nobody/ghost-market')
+    expect(finding?.id).toBeUndefined()
+    expect(finding?.reason).toContain('卸载后重装')
+    // 无签名的普通 console 输出：门都不进。
+    expect(guard.considerClientConsole('Error: something else entirely')).toEqual({ relevant: false, acted: false, resolvable: false })
+    // AggregateError 多失败：message 无逐条信息，只过门不产出 finding（已知边界，钉住）。
+    expect(guard.considerClientConsole('Uncaught (in promise) Error: loader fibers failed')).toEqual({ relevant: true, acted: false, resolvable: false })
+  })
+
+  it('considerClientConsole resolves the web-boot sweep block (pending entries by name)', () => {
+    const home = join(root, 'client-sweep')
+    writeBundle(home, 'mock-wait', '- insert:\n  - id: mock-wait\n    name: mock-wait\n')
+    writeManifest(home, ['mock-wait'], ['mock-wait'])
+    const { guard } = makeGuard(home)
+    const text = ['web boot: 1 entry did not activate', 'mock-wait: pending (waiting for service: no-such-service-xyz)'].join('\n')
+    const r = guard.considerClientConsole(text)
+    // 客户端 boot 门禁要求全部 entry 激活：pending 同样把 boot 卡死在错误页，必须停用
+    // （与运行期通道「pending 仅记账」刻意不同——那边宿主活着，等待可容忍）。
+    expect(r).toEqual({ relevant: true, acted: true, resolvable: true })
+    expect(disabledEntryIds({ dshHome: home }).has('mock-wait')).toBe(true)
+    expect(guard.findings().some(f => f.key === 'client:mock-wait' && f.category === 'dependency-missing')).toBe(true)
+  })
+
+  // ── preBoot 同名查重（同名不同 id 的重复组合）─────────────────────────────────
+  it('preBoot disables later rows of duplicate-name composition at row level, keeping bundles intact', () => {
+    const home = join(root, 'dupname')
+    // 聚合器 + 单装的真实形态：两包各有一行、name 相同、id 不同。
+    writeBundle(home, '@linxin666/dsh-web-ui-all', '- insert:\n  - id: web-ui-market\n    name: \'@linxin666/dsh-client-ui-market\'\n')
+    writeBundle(home, '@linxin666/dsh-client-ui-market', '- insert:\n  - id: ui-market\n    name: \'@linxin666/dsh-client-ui-market\'\n')
+    const manifest = writeManifest(home, ['@linxin666/dsh-web-ui-all', '@linxin666/dsh-client-ui-market'], ['@linxin666/dsh-web-ui-all', '@linxin666/dsh-client-ui-market'])
+    const { guard } = makeGuard(home)
+    guard.preBoot()
+    // 行级停用后声明者；bundle 不移出（与 id 重复的处置刻意不同）。聚合器在 bundles 序
+    // 中先声明 → 其行（web-ui-market）保留生效；后声明的单装行（ui-market）被停用。
+    expect(manifestBundles(manifest)).toHaveLength(2)
+    const disabled = disabledEntryIds({ dshHome: home })
+    expect(disabled.has('ui-market')).toBe(true) // 后声明的行
+    expect(disabled.has('web-ui-market')).toBe(false)
+    const finding = guard.findings().find(f => f.key === 'name:@linxin666/dsh-client-ui-market')
+    expect(finding).toMatchObject({ category: 'conflict', kind: 'entry' })
+    // 幂等：二轮 preBoot 不再有活行同名对，不新增隔离。
+    const before = disabledEntryIds({ dshHome: home }).size
+    guard.preBoot()
+    expect(disabledEntryIds({ dshHome: home }).size).toBe(before)
+  })
+
+  it('preBoot duplicate-name check ignores rows already disabled by overrides and handles user-layer dups', () => {
+    const home = join(root, 'dupname-override')
+    writeBundle(home, 'pkg-a', '- insert:\n  - id: row-a\n    name: shared-name\n')
+    writeBundle(home, 'pkg-b', '- insert:\n  - id: row-b\n    name: shared-name\n')
+    writeManifest(home, ['pkg-a', 'pkg-b'], ['pkg-a', 'pkg-b'])
+    // 守卫自己的历史隔离行（裸行覆盖 row-b）：不构成活行同名对，不得误报/再隔离。
+    writeFileSync(join(home, 'cordis.patch.yml'), '- id: row-b\n  disabled: true\n')
+    const { guard } = makeGuard(home)
+    guard.preBoot()
+    expect(guard.findings().some(f => f.key === 'name:shared-name')).toBe(false)
+    expect(disabledEntryIds({ dshHome: home }).size).toBe(1)
+    // 用户层（home）后声明的同名行同样可停用：bundle 行在前、home insert 行在后。
+    const home2 = join(root, 'dupname-userlayer')
+    writeBundle(home2, 'pkg-a', '- insert:\n  - id: row-a\n    name: shared-name\n')
+    writeManifest(home2, ['pkg-a'], ['pkg-a'])
+    writeFileSync(join(home2, 'cordis.patch.yml'), '- insert:\n  - id: row-user\n    name: shared-name\n')
+    const g2 = makeGuard(home2).guard
+    g2.preBoot()
+    const disabled2 = disabledEntryIds({ dshHome: home2 })
+    expect(disabled2.has('row-user')).toBe(true)
+    expect(disabled2.has('row-a')).toBe(false)
+  })
+
+  // ── 预算死锁修复：actionable 但预算耗尽必须推进安全模式连击 ────────────────────
+  it('budget exhaustion with actionable findings advances the streak into safe mode', () => {
+    const home = join(root, 'budget-deadlock')
+    writeBundle(home, 'mock-a', '- insert:\n  - id: mock-a\n    name: mock-a\n')
+    writeBundle(home, 'mock-b', '- insert:\n  - id: mock-b\n    name: mock-b\n')
+    writeBundle(home, 'mock-c', '- insert:\n  - id: mock-c\n    name: mock-c\n')
+    writeManifest(home, ['mock-a', 'mock-b', 'mock-c'], ['mock-a', 'mock-b', 'mock-c'])
+    const both = ['dsh: failed to apply loader entry mock-a (mock-a): Error: boom', 'dsh: failed to apply loader entry mock-b (mock-b): Error: boom'].join('\n')
+    const guard = new PluginGuard({ dshHome: home, readLog: () => both, log: () => {}, maxQuarantined: 1 })
+    expect(guard.considerCrash({ terminal: true }).quarantinedNew).toBe(true) // 只装得下 1 个
+    expect(guard.considerCrash({ terminal: true }).quarantinedNew).toBe(false) // 预算耗尽轮：streak 1
+    expect(guard.considerCrash({ terminal: true }).quarantinedNew).toBe(true) // streak 2 → 安全模式兜底
+    expect(disabledEntryIds({ dshHome: home }).has('mock-c')).toBe(true) // 安全模式全量停用 tracked
+  })
+
+  it('noteBootSuccess resets the quarantine budget so later sessions can still act', () => {
+    const home = join(root, 'budget-reset')
+    writeBundle(home, 'mock-a', '- insert:\n  - id: mock-a\n    name: mock-a\n')
+    writeBundle(home, 'mock-b', '- insert:\n  - id: mock-b\n    name: mock-b\n')
+    writeManifest(home, ['mock-a', 'mock-b'], ['mock-a', 'mock-b'])
+    let log = 'dsh: failed to apply loader entry mock-a (mock-a): Error: boom'
+    const guard = new PluginGuard({ dshHome: home, readLog: () => log, log: () => {}, maxQuarantined: 1 })
+    expect(guard.considerCrash({ terminal: true }).quarantinedNew).toBe(true)
+    guard.noteBootSuccess() // boot 成功 = 循环已破，同实例预算重开
+    log = 'dsh: failed to apply loader entry mock-b (mock-b): Error: boom'
+    expect(guard.considerCrash({ terminal: true }).quarantinedNew).toBe(true)
+    expect(disabledEntryIds({ dshHome: home }).has('mock-b')).toBe(true)
+  })
+
+  it('spawn exemption covers spawnSync forms but not bare plugin-level EACCES', () => {
+    const home = join(root, 'spawn-re')
+    writeBundle(home, 'mock-a', '- insert:\n  - id: mock-a\n    name: mock-a\n')
+    writeManifest(home, ['mock-a'], ['mock-a'])
+    // spawnSync 带 CLI 名形态：环境级，豁免（两轮不进安全模式）。
+    const syncGuard = makeGuard(home, 'Error: spawnSync pnpm ENOENT').guard
+    syncGuard.considerCrash({ terminal: true })
+    syncGuard.considerCrash({ terminal: true })
+    expect(syncGuard.findings().some(f => f.key === 'boot:safe-mode')).toBe(false)
+    // 裸 EACCES（插件级文件权限错误，无其他签名）：不再被整体豁免 → 两轮进安全模式。
+    const eaccesGuard = makeGuard(home, "Error: EACCES: permission denied, open 'C:/x/locked.json'").guard
+    eaccesGuard.considerCrash({ terminal: true })
+    eaccesGuard.considerCrash({ terminal: true })
+    expect(eaccesGuard.findings().some(f => f.key === 'boot:safe-mode')).toBe(true)
+  })
+
+  // ── ready 态日志巡检（live-apply 失败兜底）────────────────────────────────────
+  it('patrol records on first sight and quarantines only on the second consecutive round', () => {
+    const home = join(root, 'patrol')
+    writeBundle(home, 'mock-live', '- insert:\n  - id: mock-live\n    name: mock-live\n')
+    writeManifest(home, ['mock-live'], ['mock-live'])
+    const logText = 'dsh: warning: config reload at C:/x/cordis.patch.yml failed: Error: failed to apply loader entry mock-live (mock-live): Error: boom'
+    const { guard } = makeGuard(home, logText)
+    guard.patrolBegin()
+    guard.patrol() // 首轮：记账不落行（半写瞬态可能自愈）
+    expect(guard.findings().some(f => f.id === 'mock-live' && f.source === 'runtime')).toBe(true)
+    expect(disabledEntryIds({ dshHome: home }).has('mock-live')).toBe(false)
+    guard.patrol() // 次轮窗口仍在：落行
+    expect(disabledEntryIds({ dshHome: home }).has('mock-live')).toBe(true)
+    // patrolBegin（sidecar 新一轮 ready）清确认窗：同样的失败要重新两轮。
+    const home2 = join(root, 'patrol-reset')
+    writeBundle(home2, 'mock-live', '- insert:\n  - id: mock-live\n    name: mock-live\n')
+    writeManifest(home2, ['mock-live'], ['mock-live'])
+    const g2 = makeGuard(home2, logText).guard
+    g2.patrolBegin()
+    g2.patrol()
+    g2.patrol()
+    expect(disabledEntryIds({ dshHome: home2 }).size).toBe(1)
+    g2.patrolBegin()
+    const disabledBefore = disabledEntryIds({ dshHome: home2 }).size
+    g2.patrol()
+    expect(disabledEntryIds({ dshHome: home2 }).size).toBe(disabledBefore) // 窗口清零后不动作
+  })
+
+  it('onNewFindings fires once per new ledger entry and never throws out of apply', () => {
+    const home = join(root, 'notify')
+    writeBundle(home, 'mock-a', '- insert:\n  - id: mock-a\n    name: mock-a\n')
+    writeManifest(home, ['mock-a'], ['mock-a'])
+    const seen: GuardFinding[][] = []
+    const guard = new PluginGuard({
+      dshHome: home,
+      readLog: () => 'dsh: failed to apply loader entry mock-a (mock-a): Error: boom',
+      log: () => {},
+      onNewFindings: (added) => { seen.push([...added]); throw new Error('notify channel down') },
+    })
+    guard.considerCrash({ terminal: true })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]![0]!.id).toBe('mock-a')
+    // 通知通道抛错不影响守卫主流程：同轮已写入隔离行。
+    expect(disabledEntryIds({ dshHome: home }).has('mock-a')).toBe(true)
+    guard.considerCrash({ terminal: true }) // 已在台账：合并，不再通知
+    expect(seen).toHaveLength(1)
   })
 })

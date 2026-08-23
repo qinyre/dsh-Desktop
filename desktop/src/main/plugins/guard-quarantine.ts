@@ -13,7 +13,20 @@ export const QUARANTINE_MARKER = 'dsh-desktop plugin-guard quarantine'
 
 const BACKUP_SUFFIX = '.plugin-guard-bak'
 
-function backup(path: string): void {
+/** 本进程已备份过的目标（首次写入前留预守卫原状；后续写入不再覆盖首份备份）。 */
+const backedUp = new Set<string>()
+
+function backupOnce(path: string): void {
+  if (backedUp.has(path)) return
+  backedUp.add(path)
+  if (!existsSync(path)) return // 首写创建的层没有预守卫原状可备
+  const bak = path + BACKUP_SUFFIX
+  rmSync(bak, { force: true })
+  copyFileSync(path, bak)
+}
+
+/** 损坏修复专用：每次都覆盖备份（取证语义——捕获本次被重置前的损坏态原文）。 */
+function backupAlways(path: string): void {
   const bak = path + BACKUP_SUFFIX
   rmSync(bak, { force: true })
   copyFileSync(path, bak)
@@ -39,6 +52,9 @@ function renderAndWrite(doc: ReturnType<typeof parseDocument>, seq: YAMLSeq, pat
   setBlockStyle(seq)
   const next = doc.toString({ lineWidth: 0 })
   parse(next) // 写前自检：live watcher 与下次启动都对此文件 fail loud
+  // 就地覆盖写与 dsh 侧 MCP/安装器写行存在丢失更新窗口（无锁、chokidar 要求就地写），
+  // 备份首份原状供人工恢复——备份≠并发安全，窗口内并发写仍可能互相覆盖。
+  backupOnce(path)
   writeFileSync(path, next, 'utf8')
 }
 
@@ -137,7 +153,7 @@ export function quarantineBundles(opts: { dshHome: string; names: readonly strin
   const next = bundles.filter((name): name is string => typeof name === 'string' && !remove.has(name))
   const written = bundles.filter((name): name is string => typeof name === 'string' && remove.has(name))
   if (written.length === 0) return { written }
-  backup(manifestPath)
+  backupOnce(manifestPath)
   parsed.dsh!.profile!.bundles = next
   writeFileSync(manifestPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8')
   return { written }
@@ -154,7 +170,7 @@ export function repairCorruptLayers(opts: { dshHome: string; paths: readonly str
     const doc = parseDocument(readFileSync(path, 'utf8'))
     const parseable = doc.errors.length === 0 && (doc.contents === null || doc.contents instanceof YAMLSeq)
     if (parseable) continue
-    backup(path)
+    backupAlways(path)
     writeFileSync(path, '[]\n', 'utf8')
     reset.push(path)
   }

@@ -87,8 +87,9 @@ describe('readLayerTable', () => {
     expect(bundleNameOfRowSource(join(home, 'cordis.patch.yml'))).toBeUndefined()
   })
 
-  it('extracts scoped package names as two segments', () => {
-    expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules', '@qinyre', 'dsh-plugin-x', 'cordis.patch.yml'))).toBe(join('@qinyre', 'dsh-plugin-x'))
+  it('extracts scoped package names as two npm-normalized segments', () => {
+    // 包名恒为 POSIX 斜杠形态（与 manifest/lockfile 一致）；Windows 路径不得泄漏 sep。
+    expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules', '@qinyre', 'dsh-plugin-x', 'cordis.patch.yml'))).toBe('@qinyre/dsh-plugin-x')
     expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules', 'plain', 'cordis.patch.yml'))).toBe('plain')
     expect(bundleNameOfRowSource(join('C:', 'x', 'node_modules'))).toBeUndefined()
   })

@@ -163,6 +163,21 @@ export function findDuplicateEntryIds(table: LayerTable): string[] {
   return [...dup]
 }
 
+/**
+ * 同名不同 id 的重复组合（name 对 loader 合法、group 只查重 id，但双行 = 同模块
+ * 双 apply：服务/locale 命名空间级冲突的温床）。排除已失效行（insert 自带 disabled
+ * 或被裸行 {id, disabled} 覆盖——后者含守卫自己的历史隔离行，不排除会每轮误报）。
+ * 返回仍处于生效态的同名模块名列表。
+ */
+export function findDuplicateNames(table: LayerTable, disabledIds: ReadonlySet<string>): string[] {
+  const seen = new Map<string, number>()
+  for (const row of table.rows) {
+    if (row.name === '' || row.disabled || disabledIds.has(row.id)) continue
+    seen.set(row.name, (seen.get(row.name) ?? 0) + 1)
+  }
+  return [...seen.entries()].filter(([, n]) => n > 1).map(([name]) => name)
+}
+
 interface PackageManifestShape {
   main?: unknown
   module?: unknown
@@ -209,13 +224,18 @@ export function isBundleRow(source: string): boolean {
   return source.includes(`${sep}node_modules${sep}`)
 }
 
-/** 从 bundle patch 层路径提取 bundle 包名（node_modules 后第一段；scoped 包取两段）。 */
+/**
+ * 从 bundle patch 层路径提取 bundle 包名（node_modules 后第一段；scoped 包取两段）。
+ * scoped 段用 npm 规范的 '/' 连接——包名永远是 POSIX 斜杠形态，与 manifest/lockfile
+ * 一致；用 path.sep 连接在 Windows 上会得到 '@scope\pkg'，与 tracked 名永不相等
+ * （scoped 包的隔离路径会被整体判成系统行）。
+ */
 export function bundleNameOfRowSource(source: string): string | undefined {
   const marker = `${sep}node_modules${sep}`
   const at = source.lastIndexOf(marker)
   if (at === -1) return undefined
   const segments = source.slice(at + marker.length).split(sep)
   const first = segments[0] ?? ''
-  const name = first.startsWith('@') && segments.length > 1 ? `${first}${sep}${segments[1]}` : first
+  const name = first.startsWith('@') && segments.length > 1 ? `${first}/${segments[1]}` : first
   return name === '' || name === `@` ? undefined : name
 }

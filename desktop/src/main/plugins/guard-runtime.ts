@@ -24,6 +24,11 @@ export interface PluginRuntimeMonitorOpts {
   fetchImpl?: typeof fetch
   /** 每个 tick 的全量清单回调（含空清单）。 */
   onInventory: (entries: readonly RuntimeInventoryEntry[]) => void
+  /**
+   * 每 tick 必调的伴随钩子（finally 语义：网络失败/响应畸形也调）。挂 ready 态日志
+   * 巡检——pluginInventory 端点失明（V10d）时这是运行期守卫仅存的通道。
+   */
+  onTick?: () => void
   /** 网络/协议错误（吞掉但留痕，不影响下一轮）。 */
   onError?: (error: unknown) => void
 }
@@ -84,6 +89,11 @@ export class PluginRuntimeMonitor {
       this.safeOnError(error)
     } finally {
       this.inFlight = false
+      try {
+        this.opts.onTick?.()
+      } catch {
+        /* 伴随钩子自身故障不得经 void tick() 变成 unhandled rejection */
+      }
     }
   }
 

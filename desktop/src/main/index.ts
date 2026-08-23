@@ -64,6 +64,9 @@ if (!gotLock) {
     const statusPagePath = rendererUrl !== undefined
       ? new URL('status/index.html', rendererUrl).href
       : join(__dirname, '../renderer/status/index.html')
+    // 客户端插件树 boot 失败的处置函数（需 guard/sidecar/tray 就绪后才定义，先占位）：
+    // WindowController 的 console 转发在窗口创建时接线，实际逻辑在 sidecar 起来后赋值。
+    let onRendererConsole: (text: string) => void = () => {}
     windows = new WindowController({
       getState: () => sidecar?.state ?? 'idle',
       onRetry: () => { sidecar?.retry() },
@@ -71,6 +74,7 @@ if (!gotLock) {
       preloadPath: join(__dirname, '../preload/index.js'),
       statusPagePath,
       stateFile: join(paths.userDataDir, 'window-state.json'),
+      onConsoleMessage: (text) => onRendererConsole(text),
     })
     const win = windows.createMainWindow()
     if (!app.isPackaged) win.webContents.openDevTools({ mode: 'detach' })
@@ -184,6 +188,13 @@ if (!gotLock) {
       // 空日志计：崩溃后拿不到任何输出本身就是「无证据」，安全模式的连击必须走得通。
       readLog: () => { try { return readFileSync(logger.filePath, 'utf8') } catch { return '' } },
       log: (line) => { logger.appendLine(`[dsh-desktop] ${line}`) },
+      // 运行期新隔离的即时通知（ready 态才气泡；boot 态发现留给 ready 弹窗）。
+      // 气泡即视为已告知：markReported 清 unreported，防下次 ready 对同条再弹一次。
+      onNewFindings: (added) => {
+        if (sidecar?.state !== 'ready') return
+        tray.notify('DSH 插件守卫', `已自动处理 ${added.length} 个插件问题（${added.map(f => f.name ?? f.bundle ?? f.id ?? f.key).slice(0, 3).join('、')}），详情见托盘「插件隔离报告」。`)
+        guard?.markReported()
+      },
     })
     if (guard !== undefined) {
       windows?.showActivity('正在检查插件安全状态…')
@@ -191,10 +202,13 @@ if (!gotLock) {
     }
     // 运行期插件健康轮询（boot 成功后经 pluginInventory 网关读 fiber 状态）：FAILED 即时
     // 写隔离行（home 层被 sidecar live watch，实时生效），PENDING 仅记账。start 幂等，
-    // 每次 ready 重挂；crashed/failed/退出即停。
+    // 每次 ready 重挂；crashed/failed/退出即停。onTick 挂 ready 态日志巡检（patrol）：
+    // live-apply 失败不产生 crash 事件，只留 sidecar.log——巡检在 finally 语义下必跑，
+    // pluginInventory 端点失明时这是运行期守卫仅存通道。
     const runtimeMonitor = guard === undefined ? undefined : new PluginRuntimeMonitor({
       port: () => sidecar?.port,
       onInventory: (entries) => { if (guard !== undefined) guard.considerRuntime(entries) },
+      onTick: () => { runHealer('guard patrol', () => guard?.patrol()) },
       onError: (error) => { logger.appendLine(`[dsh-desktop] plugin guard runtime poll failed: ${String(error)}`) },
     })
     sidecar = new SidecarManager({
@@ -205,10 +219,17 @@ if (!gotLock) {
       env: sidecarEnv,
       logger,
     })
+    // 客户端恢复状态：ready（新 boot 周期）时重置——reload 预算按 boot 周期而非进程寿命。
+    let clientReloads = 0
+    let clientStuckReported = false
     sidecar.on('ready', (port) => {
       windows?.loadDsh(port)
       guard?.noteBootSuccess()
       runtimeMonitor?.start()
+      // 巡检两轮确认窗口清零：轮转后 ready 的当前日志只含本轮干净 boot，从头扫窗口。
+      guard?.patrolBegin()
+      clientReloads = 0
+      clientStuckReported = false
       // 本轮有新隔离时弹一次报告（等 dsh 页加载完成再弹，3s 兜底）。fired 拦掉
       // 「兜底 timer 已触发后 did-finish-load 才到」的双弹；轮次号拦掉 restart 循环里
       // 旧 ready 挂上的 stale 监听闭包（旧轮的弹窗不该盖过新轮）。
@@ -231,6 +252,40 @@ if (!gotLock) {
       const fallbackTimer = setTimeout(showPending, 3_000)
       win.webContents.once('did-finish-load', () => { clearTimeout(fallbackTimer); showPending() })
     })
+    // 客户端插件树 boot 失败的恢复链（渲染器 console 遥测 → 按名隔离 → reload 重试）：
+    // 客户端清单按页烘焙，隔离行经宿主 live watch 生效后必须重载页面才能重组合；宿主
+    // watch 重组是秒级异步，reload 延迟 1.5s 且以「失败复现」驱动重试（每次 reload 的新
+    // entry id 都不同，acted 与否不构成终态信号）。只动加载后短窗内的失败（boot 场景）；
+    // 会话中段的客户端失败只报告不打断用户。重试上限 3 次，耗尽即弹隔离报告。
+    onRendererConsole = (text: string): void => {
+      const g = guard
+      if (g === undefined) return
+      const { relevant, resolvable } = g.considerClientConsole(text)
+      if (!relevant) return
+      const age = windows?.dshLoadAge()
+      const inBootWindow = age !== undefined && age < 30_000
+      if (resolvable && inBootWindow && clientReloads < 3) {
+        clientReloads += 1
+        logger.appendLine(`[dsh-desktop] client plugin boot failure detected; reload ${clientReloads}/3`)
+        setTimeout(() => {
+          if (sidecar?.state === 'ready' && windows?.reloadDshPage() !== true) {
+            logger.appendLine('[dsh-desktop] client recovery reload skipped: dsh page not active')
+          }
+        }, 1_500)
+        return
+      }
+      if (clientStuckReported) return
+      clientStuckReported = true
+      const pending = g.onReady()
+      if (pending.length === 0) return
+      logger.appendLine(`[dsh-desktop] client plugin failure not auto-recoverable (${resolvable ? 'retries exhausted' : 'host row unresolved'}); reporting`)
+      void showGuardReport({
+        win: windows?.mainWindow,
+        findings: pending,
+        onOpenLogs: () => { void shell.openPath(paths.logDir) },
+        onReenable: () => { g.reEnableAll(); void sidecar?.restart() },
+      }).then(() => g.markReported()).catch(() => { /* 弹窗被打断：报告留台账，托盘可重开 */ })
+    }
     // 皮肤卸载残留自愈（skin-selfheal.ts 头注释有完整上游事实）：启用中卸载皮肤包
     // 会留下 managed 块 + 悬空链接，下次启动 loader 导入失败、整树拒绝。特征唯一、
     // 修复确定，crashed 时同步修完，管理器自带的退避重启（1s 起）拉起的就是干净状态，

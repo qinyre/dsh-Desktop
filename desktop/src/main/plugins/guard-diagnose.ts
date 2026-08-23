@@ -15,9 +15,17 @@ export interface GuardFinding {
   path?: string
   category: GuardCategory
   reason: string
-  source: 'pre-boot' | 'crash' | 'runtime'
+  /** client = 渲染器客户端插件树（boot.tsx 的 console.error，entry id 为每页随机值）。 */
+  source: 'pre-boot' | 'crash' | 'runtime' | 'client'
   firstSeen: string
 }
+
+/**
+ * 「冲突类」detail 分类：locale/槽位/服务/命令等单占用资源被重复注册的原文特征
+ * （逐字取自 harness：locale/src/client、ui-slots、cordis reflect、ui-commands）。
+ * 命中时 category 归 conflict——两个插件抢同一资源，而非插件自身坏了。
+ */
+export const RE_CONFLICT_DETAIL = /already has locale|has been registered|is already declared|already has a (?:registration|entry|contribution)|duplicate (?:contribution|decoration|graph entry|factory)/
 
 // 签名格式逐字取自 harness 源码（详见实施计划「关键事实」1-7）：
 const RE_ENTRY_FAIL = /failed to (?:import|apply) loader entry (\S+) \(([^)]*)\): (.*)/

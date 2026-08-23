@@ -16,6 +16,8 @@ export class WindowController {
   /** 状态页当前展示的活动文本；dsh 页加载后不再推送（页面没有消费元素）。 */
   private activity = ''
   private showingStatus = true
+  /** dsh 页最近一次加载/reload 时刻（0=从未）；客户端 boot 失败的重载窗口据此判定。 */
+  private lastDshLoadAt = 0
   private readonly store: WindowStateStore
 
   constructor(private readonly opts: {
@@ -25,6 +27,12 @@ export class WindowController {
     preloadPath: string
     statusPagePath: string
     stateFile: string
+    /**
+     * dsh 页渲染器的 error 级 console 输出（仅 dsh 页在场时转发；status 页共用同一
+     * webContents 不转发）。客户端插件树 boot 失败只走浏览器 console（宿主零感知），
+     * 这是主进程能拿到它的唯一通道。
+     */
+    onConsoleMessage?: (text: string) => void
   }) {
     this.store = new WindowStateStore(opts.stateFile)
   }
@@ -65,6 +73,12 @@ export class WindowController {
       if (isSafeExternalUrl(url)) void shell.openExternal(url)
       return { action: 'deny' }
     })
+    // 客户端插件树 boot 失败遥测：只认 error 级且仅 dsh 页在场时转发（status 页共用
+    // webContents；info/warn 里回显旧日志的插件会误触签名门）。
+    this.win.webContents.on('console-message', (details) => {
+      if (this.showingStatus || details.level !== 'error') return
+      this.opts.onConsoleMessage?.(details.message)
+    })
     this.showStatus('launching')
     this.setTitleBarColor(STATUS_BAR_COLOR)
     return this.win
@@ -74,7 +88,26 @@ export class WindowController {
     // 端口每次重启都会变（设计书 §4）：总是 loadURL 新地址，不做 reload。
     this.port = port
     this.showingStatus = false
+    this.lastDshLoadAt = Date.now()
     void this.win?.loadURL(`http://127.0.0.1:${port}`)
+  }
+
+  /**
+   * dsh 页距最近一次加载/reload 的毫秒数；status 页在场或从未加载过返回 undefined。
+   * 客户端 boot 失败的自动 reload 只允许发生在加载后的短窗内（boot 失败），会话中段
+   * 的同类失败只报告不打断用户。
+   */
+  dshLoadAge(): number | undefined {
+    if (this.showingStatus || this.lastDshLoadAt === 0) return undefined
+    return Date.now() - this.lastDshLoadAt
+  }
+
+  /** 受控 reload 当前 dsh 页（客户端清单按页烘焙，隔离行写入后须重载才生效）。 */
+  reloadDshPage(): boolean {
+    if (this.showingStatus || this.win === undefined) return false
+    this.lastDshLoadAt = Date.now()
+    this.win.webContents.reload()
+    return true
   }
 
   showStatus(kind: 'launching' | 'failed', detail?: string): void {

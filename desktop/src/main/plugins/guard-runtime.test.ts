@@ -79,4 +79,27 @@ describe('PluginRuntimeMonitor', () => {
       vi.useRealTimers()
     }
   })
+
+  it('onTick fires in finally semantics even when the poll itself fails', async () => {
+    const fetchImpl = (async () => { throw new Error('endpoint down') }) as unknown as typeof fetch
+    let ticks = 0
+    const monitor = new PluginRuntimeMonitor({
+      port: () => 1,
+      fetchImpl,
+      onInventory: () => {},
+      onError: () => {},
+      onTick: () => { ticks += 1 },
+    })
+    await monitor.tick()
+    expect(ticks).toBe(1) // 端点失明时巡检通道仍每轮必走
+    // onTick 自身抛错不得变成 unhandled rejection（void tick() 语义）。
+    const monitor2 = new PluginRuntimeMonitor({
+      port: () => 1,
+      fetchImpl,
+      onInventory: () => {},
+      onError: () => {},
+      onTick: () => { throw new Error('tick hook broke') },
+    })
+    await expect(monitor2.tick()).resolves.toBeUndefined()
+  })
 })

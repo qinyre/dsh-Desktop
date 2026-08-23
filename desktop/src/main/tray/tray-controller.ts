@@ -39,6 +39,18 @@ export class TrayController {
 
   private trayShownOnce(): boolean { return this.trayHintShown }
 
+  /**
+   * 托盘气泡通知（运行期新隔离等；Windows-only API，其余平台/未 attach 时静默——
+   * 托盘「插件隔离报告」仍在）。自身绝不抛错。
+   */
+  notify(title: string, content: string): void {
+    try {
+      this.tray?.displayBalloon({ title, content })
+    } catch {
+      /* displayBalloon 不可用（非 Windows/托盘已销毁）：静默 */
+    }
+  }
+
   destroy(): void {
     this.tray?.destroy()
     this.tray = undefined

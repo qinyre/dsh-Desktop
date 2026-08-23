@@ -45,6 +45,21 @@ describe('guard-quarantine', () => {
     mkdirSync(h2, { recursive: true })
     expect(quarantineEntries({ dshHome: h2, ids: ['x'] }).written).toEqual(['x'])
     expect(parse(readFileSync(join(h2, 'cordis.patch.yml'), 'utf8'))).toEqual([{ id: 'x', disabled: true }])
+    // 首写创建的层没有预守卫原状：不产生备份文件。
+    expect(existsSync(join(h2, 'cordis.patch.yml') + '.plugin-guard-bak')).toBe(false)
+  })
+
+  it('backs up the home layer once per process, preserving the pre-guard original', () => {
+    const h7 = join(root, 'h7')
+    mkdirSync(h7, { recursive: true })
+    const patch = join(h7, 'cordis.patch.yml')
+    const original = '- insert:\n  - id: user-row\n    name: keep-me\n'
+    writeFileSync(patch, original, 'utf8')
+    quarantineEntries({ dshHome: h7, ids: ['a'] })
+    expect(readFileSync(patch + '.plugin-guard-bak', 'utf8')).toBe(original)
+    // 二次写入不覆盖首份备份（预守卫原状是最有价值的恢复锚点）。
+    quarantineEntries({ dshHome: h7, ids: ['b'] })
+    expect(readFileSync(patch + '.plugin-guard-bak', 'utf8')).toBe(original)
   })
 
   it('refuses to write when the home layer does not parse', () => {

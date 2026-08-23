@@ -1,17 +1,19 @@
 import { basename, join, sep } from 'node:path'
-import { bundleNameOfRowSource, findDuplicateEntryIds, isBundleRow, readLayerTable, type LayerTable } from './patch-layers'
-import { diagnoseLog, type GuardFinding } from './guard-diagnose'
+import { bundleNameOfRowSource, findDuplicateEntryIds, findDuplicateNames, isBundleRow, readLayerTable, type LayerTable } from './patch-layers'
+import { diagnoseLog, RE_CONFLICT_DETAIL, type GuardCategory, type GuardFinding } from './guard-diagnose'
 import { disabledEntryIds, quarantineBundles, quarantineEntries, repairCorruptLayers, removeQuarantine } from './guard-quarantine'
 import { GuardLedgerStore } from './guard-ledger'
 
 export interface PluginGuardOpts {
   dshHome: string
-  /** 读 sidecar 当前日志全文（崩溃诊断的输入）；不可用时返回 null。 */
+  /** 读 sidecar 当前日志全文（崩溃诊断与 ready 态巡检的输入）；不可用时返回 null。 */
   readLog: () => string | null
   log: (line: string) => void
   profile?: string
   /** 单进程累计隔离动作（行 + bundle）上限，防无限循环。默认 8。 */
   maxQuarantined?: number
+  /** 台账新增条目回调（ready 态运行期隔离的用户可见通知入口；自身抛错被吞掉）。 */
+  onNewFindings?: (added: GuardFinding[]) => void
 }
 
 const nowIso = (): string => new Date().toISOString()
@@ -19,8 +21,39 @@ const nowIso = (): string => new Date().toISOString()
 /** 无可定位诊断的失败连续达到此次数 → 进入安全模式（一次性全量停用 tracked 插件）。 */
 const SAFE_MODE_AFTER = 2
 
-/** 环境级 spawn 故障（可执行文件缺失/被锁等）不是插件问题：不计连击（也不清零，保持现状）。 */
-const SPAWN_ERROR_RE = /Error: spawn\b|spawn ENOENT|EACCES/
+/**
+ * 环境级 spawn 故障（可执行文件缺失/被锁等）不是插件问题：不计连击（也不清零，保持现状）。
+ * 只认 spawn 系错误码与 spawn 抛错形态；裸 EACCES 常见于插件级文件权限错误，不得整体豁免。
+ */
+const SPAWN_ERROR_RE = /Error: spawn\w*\b|spawn\w*(?: [\w@/.-]+)? (?:ENOENT|EACCES|EPERM)\b/
+
+/**
+ * 渲染器客户端插件树 boot 失败的签名门（AppWebEntry boot.tsx 只把失败 console.error 到
+ * 浏览器；文案与宿主共用同一 vendored loader）。'config reload at' 属宿主 HMR 噪声，
+ * 不在此门（归 patrol 巡检）。
+ */
+const CLIENT_BOOT_SIG_RE = /failed to (?:import|apply) loader entry|did not activate|web boot:|loader fibers failed|already has locale/
+
+/**
+ * name 优先解析 finding 的隔离目标行 id。客户端树的 entry id 每次页面加载随机生成
+ * （Math.random hex）、无 id 的 insert 行每次 boot 随机 ensureId——都与宿主 patch 行 id
+ * 不同空间，直接写 disable 行是惰性空操作（include 只 warn entry not found）。必须换成
+ * 宿主行 id；同名行全部停用（任何一份拷贝重新挂载都会复现冲突）。id 本身就在层表
+ * （宿主侧崩溃路径）则原样使用。解析不到 → undefined（调用方转 report-only）。
+ */
+function resolveHostRowIds(table: LayerTable, finding: Pick<GuardFinding, 'id' | 'name'>): string[] | undefined {
+  if (finding.name !== undefined && finding.name !== '') {
+    const ids = table.idsByName.get(finding.name)
+    if (ids !== undefined && ids.length > 0) return ids
+  }
+  if (finding.id !== undefined && table.rows.some(row => row.id === finding.id)) return [finding.id]
+  return undefined
+}
+
+/** detail 命中单占用资源被重复注册特征（locale ns/槽位/服务/命令）时归类冲突。 */
+function classifyDetail(detail: string, fallback: GuardCategory): GuardCategory {
+  return RE_CONFLICT_DETAIL.test(detail) ? 'conflict' : fallback
+}
 
 /**
  * 重复 entry id 的处置：层叠顺序保留首个声明，其余行按来源 bundle 移出 bundles 清单。
@@ -50,6 +83,17 @@ export class PluginGuard {
   /** 连续「无可定位诊断」的崩溃轮数（有可动作发现或有新动作即清零）。 */
   private emptyDiagnosisStreak = 0
   private safeModeTried = false
+  /** 运行期连续 fiberPhase=null 的条目（entryId → 连击数；≥2 记账）。 */
+  private readonly nullFiberStreaks = new Map<string, number>()
+  /**
+   * ready 态日志巡检窗口：每轮重扫日志末尾这一段（而非纯增量偏移——live-apply 失败行
+   * 只出现一次，增量模式下「两轮确认」永远凑不齐第二轮）。窗口内的行会被重复解析，
+   * 台账按 key 去重、动作由两轮确认门控，重扫无副作用；失败行被后续输出推出窗口仍未
+   * 确认 = 视为瞬态放行（下次重启由崩溃路径兜底）。
+   */
+  private static readonly PATROL_WINDOW = 16_000
+  /** patrol 上一轮窗口内出现过的可动作 key（两轮确认，滤掉 live watch 半写瞬态）。 */
+  private patrolActionablePrev = new Set<string>()
 
   constructor(private readonly opts: PluginGuardOpts) {
     this.ledger = new GuardLedgerStore(join(opts.dshHome, 'plugin-guard.json'))
@@ -62,6 +106,7 @@ export class PluginGuard {
       const findings: GuardFinding[] = []
       const removeBundles: string[] = []
       const repairPaths: string[] = []
+      const entryIds: string[] = []
       const tracked = new Set(table.tracked)
       for (const corrupt of table.corruptLayers) {
         if (corrupt.bundle !== undefined && tracked.has(corrupt.bundle)) {
@@ -87,6 +132,33 @@ export class PluginGuard {
           source: 'pre-boot', firstSeen: nowIso(),
         })
       }
+      // 同名不同 id 的重复组合：loader 的 group 只查重 id、对同 name 双行照单全收，但双行
+      // = 同模块双 apply（服务/locale 命名空间冲突的温床，客户端树虽按 name 去重、宿主侧
+      // 仍双挂）。行级停用后声明行即可解除（与 id 重复不同：那里裸行无效、必须整层移除）；
+      // 只动用户域行（tracked bundle 行或用户层行），模板/系统行仅报告。裸行覆盖（含守卫
+      // 自己的历史隔离行）与 insert 自带 disabled 的行不算活行，不参与查重。
+      const overrides = disabledEntryIds({ dshHome: this.opts.dshHome })
+      for (const name of findDuplicateNames(table, overrides)) {
+        const live = table.rows.filter(row => row.name === name && !row.disabled && !overrides.has(row.id))
+        const laterIds: string[] = []
+        let skippedSystem = false
+        for (const row of live.slice(1)) {
+          if (isBundleRow(row.source)) {
+            const bundle = bundleNameOfRowSource(row.source)
+            if (bundle === undefined || !tracked.has(bundle)) { skippedSystem = true; continue }
+          }
+          laterIds.push(row.id)
+        }
+        entryIds.push(...laterIds)
+        findings.push({
+          key: `name:${name}`, kind: 'entry', id: live[0]?.id, name, category: 'conflict',
+          reason: laterIds.length > 0
+            ? `同一插件（${name}）被组合了 ${live.length} 次，已停用后声明的 ${laterIds.length} 行（首行保留生效）`
+            : `同一插件（${name}）被组合了 ${live.length} 次（重复来源为系统级组合行，未自动停用），请卸载重复安装的插件`,
+          source: 'pre-boot', firstSeen: nowIso(),
+        })
+        if (skippedSystem && laterIds.length === 0) this.opts.log(`plugin guard: duplicate name ${name} involves system rows; report-only`)
+      }
       for (const name of table.missingBundles) {
         findings.push({ key: `bundle:${name}`, kind: 'bundle', bundle: name, category: 'dependency-missing', reason: `bundle 缺件（本次启动会被跳过，可尝试在插件页重装）：${name}`, source: 'pre-boot', firstSeen: nowIso() })
       }
@@ -100,7 +172,8 @@ export class PluginGuard {
           if (row.name === name) brokenRowIds.add(row.id)
         }
       }
-      this.apply(findings, { entryIds: [...brokenRowIds], removeBundles, repairPaths })
+      entryIds.push(...brokenRowIds)
+      this.apply(findings, { entryIds, removeBundles, repairPaths })
     } catch (error) {
       this.opts.log(`plugin guard pre-boot threw: ${String(error)}`)
     }
@@ -118,7 +191,7 @@ export class PluginGuard {
       if (text === null) return { quarantinedNew: false } // 日志不可读：不算证据，不计数
       const table = readLayerTable({ dshHome: this.opts.dshHome, profile: this.opts.profile })
       const findings = text === '' ? [] : diagnoseLog(text, table)
-      let acted = false
+      let suppressedByBudget = false
       if (findings.length > 0) {
         const disabled = disabledEntryIds({ dshHome: this.opts.dshHome })
         const tracked = new Set(table.tracked)
@@ -155,22 +228,26 @@ export class PluginGuard {
             reportFindings.push({ key: `bundle:${name}`, kind: 'bundle', bundle: name, category: 'config-corrupt', reason: `插件包 ${name} 的补丁层无法解析，已将其移出本次启动清单（原清单已备份）`, source: 'crash', firstSeen: nowIso() })
           }
         }
-        acted = this.apply(reportFindings, {
+        const { acted, suppressedByBudget: suppressed } = this.apply(reportFindings, {
           entryIds: [...entryIds],
           removeBundles: [...removeBundles],
           repairPaths: [...repairPaths],
         })
+        if (acted) {
+          this.emptyDiagnosisStreak = 0
+          return { quarantinedNew: true }
+        }
+        suppressedByBudget = suppressed
       }
-      if (acted) {
-        this.emptyDiagnosisStreak = 0
-        return { quarantinedNew: true }
-      }
-      // 连击计数：本轮既无可动作发现（entry/bundle 类）、又无新隔离动作、也非环境级
+      // 连击计数：本轮既无可动作发现（entry/bundle 类）、无新隔离动作、也非环境级
       // spawn 故障，才视为一次「无证据失败」。boot:include（kind=service）之类的报告
-      // 轮不计——AggregateError 多失败恰好只产出它，必须让连击走下去才能进安全模式。
-      // 触发检查收在增量分支内：安全模式后的「有发现但无动作」轮不误报环境问题。
+      // 轮不计——AggregateError 多失败恰好只产出它，必须让连击走下去才能进安全模式；
+      // 但「有可动作发现、却因隔离预算耗尽写不了行」必须计（否则 >8 个并发失败会
+      // 既不隔离也不进安全模式，死锁在 failed 终态）。空发现轮（日志无签名）是安全
+      // 模式的主入口，连击必须照走。触发检查收在增量分支内：安全模式后的「有发现但
+      // 无动作」轮不误报环境问题。
       const actionable = findings.some(f => f.kind === 'entry' || f.kind === 'bundle')
-      if (!actionable && !SPAWN_ERROR_RE.test(text.slice(-500))) {
+      if ((!actionable || suppressedByBudget) && !SPAWN_ERROR_RE.test(text.slice(-500))) {
         this.emptyDiagnosisStreak += 1
         if (this.emptyDiagnosisStreak >= SAFE_MODE_AFTER) {
           if (!this.safeModeTried) {
@@ -246,9 +323,14 @@ export class PluginGuard {
     }
   }
 
-  /** boot 成功（ready）：无证据连击清零——成功本身证明配置可行。 */
+  /**
+   * boot 成功（ready）：无证据连击清零——成功本身证明配置可行；隔离预算同时重置——
+   * 预算防的是单轮崩溃循环里的无限隔离，boot 成功即循环已破，跨会话累计只会把长会话
+   * 后新故障的自动隔离饿死（reload 不触发 ready，客户端页级恢复不受影响）。
+   */
   noteBootSuccess(): void {
     this.emptyDiagnosisStreak = 0
+    this.quarantined = 0
   }
 
   /**
@@ -262,7 +344,19 @@ export class PluginGuard {
     try {
       const failed = entries.filter(e => e.enabled && e.fiberPhase === 'failed')
       const pending = entries.filter(e => e.enabled && e.fiberPhase === 'pending')
-      if (failed.length === 0 && pending.length === 0) return
+      // fiber 为 null 的 enabled 条目 = import 失败残骸或 dispose 竞态窗口（inventory 的
+      // FIBER_PHASE 映射里 DISPOSED/无 fiber 都是 null）。加载瞬态一轮即逝，连续两轮
+      // （60s）仍在才记账——只报告不停用（不可区分「必炸」与「正在被替换」）。
+      const fiberless = entries.filter(e => e.enabled && e.fiberPhase === null)
+      const fiberlessIds = new Set(fiberless.map(e => e.entryId))
+      for (const id of [...this.nullFiberStreaks.keys()]) {
+        if (!fiberlessIds.has(id)) this.nullFiberStreaks.delete(id)
+      }
+      for (const e of fiberless) {
+        this.nullFiberStreaks.set(e.entryId, (this.nullFiberStreaks.get(e.entryId) ?? 0) + 1)
+      }
+      const fiberlessConfirmed = fiberless.filter(e => (this.nullFiberStreaks.get(e.entryId) ?? 0) >= 2)
+      if (failed.length === 0 && pending.length === 0 && fiberlessConfirmed.length === 0) return
       const table = readLayerTable({ dshHome: this.opts.dshHome, profile: this.opts.profile })
       const tracked = new Set(table.tracked)
       const userDomain = new Set<string>()
@@ -295,9 +389,123 @@ export class PluginGuard {
           source: 'runtime', firstSeen: nowIso(),
         })
       }
+      for (const e of fiberlessConfirmed) {
+        findings.push({
+          key: `runtime:${e.entryId}`, kind: 'entry', id: e.entryId, name: e.moduleName,
+          category: 'plugin-error', reason: '插件条目持续无运行实例（import 失败或已销毁），已记录；若插件不工作请卸载后重装。',
+          source: 'runtime', firstSeen: nowIso(),
+        })
+      }
       this.apply(findings, { entryIds: quarantineIds, removeBundles: [], repairPaths: [] })
     } catch (error) {
       this.opts.log(`plugin guard runtime threw: ${String(error)}`)
+    }
+  }
+
+  /**
+   * 渲染器客户端插件树 boot 失败诊断（主进程经 webContents console-message 喂入，仅
+   * dsh 页在场时转发）。宿主对客户端树零感知——pluginInventory 只投影宿主 loader，客户端
+   * 失败唯一可靠信号就是 boot.tsx console.error 的原文（与宿主共用同一 vendored loader
+   * 文案，diagnoseLog 的签名直接适用）。隔离目标必须按 name 反查宿主行（客户端 entry id
+   * 每页随机），解析不到就报告并明示「卸载重装」，绝不写匹配不到任何宿主行的惰性行。
+   * 返回 relevant（签名命中=页面处于失败 boot）与 resolvable（至少一个 finding 定位到
+   * 宿主行=reload 可恢复），调用方据此决定 reload 重试。
+   */
+  considerClientConsole(text: string): { relevant: boolean; acted: boolean; resolvable: boolean } {
+    try {
+      if (!CLIENT_BOOT_SIG_RE.test(text)) return { relevant: false, acted: false, resolvable: false }
+      const table = readLayerTable({ dshHome: this.opts.dshHome, profile: this.opts.profile })
+      const findings = diagnoseLog(text, table)
+      if (findings.length === 0) return { relevant: true, acted: false, resolvable: false }
+      const disabled = disabledEntryIds({ dshHome: this.opts.dshHome })
+      const entryIds = new Set<string>()
+      let resolvable = false
+      const resolved: GuardFinding[] = []
+      for (const finding of findings) {
+        if (finding.kind !== 'entry') {
+          resolved.push({ ...finding, source: 'client' })
+          continue
+        }
+        // 台账 key 一律用稳定键（name），否则客户端随机 id 每次 reload 都是新 key：
+        // 去重失效、unreported 逐轮膨胀、通知连发。
+        const stableKey = `client:${finding.name ?? finding.id}`
+        const hostIds = resolveHostRowIds(table, finding)
+        if (hostIds === undefined) {
+          resolved.push({
+            ...finding, key: stableKey, id: undefined,
+            category: classifyDetail(finding.reason, finding.category), source: 'client',
+            reason: `客户端插件启动失败：${finding.reason}（未能定位宿主组合行，请卸载后重装该插件）`,
+          })
+          continue
+        }
+        resolvable = true
+        resolved.push({
+          ...finding, key: stableKey, id: hostIds[0],
+          category: classifyDetail(finding.reason, finding.category), source: 'client',
+          reason: `客户端插件启动失败（浏览器端）：${finding.reason}`,
+        })
+        for (const id of hostIds) {
+          if (!disabled.has(id)) entryIds.add(id)
+        }
+      }
+      const { acted } = this.apply(resolved, { entryIds: [...entryIds], removeBundles: [], repairPaths: [] })
+      return { relevant: true, acted, resolvable }
+    } catch (error) {
+      this.opts.log(`plugin guard client-console threw: ${String(error)}`)
+      return { relevant: false, acted: false, resolvable: false }
+    }
+  }
+
+  /**
+   * ready 态巡检窗口清零（每次 sidecar ready 时调用）。轮转保证 ready 时的当前日志只含
+   * 本轮 child 输出，而能走到 ready 的 boot 是干净的——无需跳过 boot 段；两轮确认
+   * 窗口同时清零。
+   */
+  patrolBegin(): void {
+    this.patrolActionablePrev.clear()
+  }
+
+  /**
+   * ready 态日志巡检（每轮 tick 调用，宿主健康、无 crash 事件可挂）。兜住 live-apply
+   * 失败：sidecar 不死，失败只留 sidecar.log 一条 HMR warn + 完整错误文本，崩溃诊断通道
+   * 结构性看不见。诊断签名与崩溃通道共用；隔离行经宿主 live watch 即时生效，无需
+   * restart。可动作项需连续两轮出现在巡检窗口内才落行——安装/更新中途的半写重组是
+   * 瞬态（HMR 自带 dirty 重试），一轮确认会把已自愈的状态固化成永久隔离。
+   */
+  patrol(): void {
+    try {
+      const text = this.opts.readLog()
+      if (text === null || text === '') return
+      const window = text.slice(-PluginGuard.PATROL_WINDOW)
+      if (!window.includes('failed')) return // 廉价预过滤：无失败字样的窗口直接跳过
+      const table = readLayerTable({ dshHome: this.opts.dshHome, profile: this.opts.profile })
+      const findings = diagnoseLog(window, table)
+      if (findings.length === 0) {
+        this.patrolActionablePrev.clear()
+        return
+      }
+      const disabled = disabledEntryIds({ dshHome: this.opts.dshHome })
+      const entryIds = new Set<string>()
+      const actionableKeys = new Set<string>()
+      for (const finding of findings) {
+        if (finding.kind !== 'entry') continue
+        const hostIds = resolveHostRowIds(table, finding)
+        if (hostIds === undefined) continue
+        const key = `entry:${hostIds[0]}`
+        actionableKeys.add(key)
+        if (!this.patrolActionablePrev.has(key)) continue // 首轮只记账，次轮仍在才动作
+        for (const id of hostIds) {
+          if (!disabled.has(id)) entryIds.add(id)
+        }
+      }
+      this.patrolActionablePrev = actionableKeys
+      this.apply(findings.map(f => ({ ...f, source: 'runtime' as const })), {
+        entryIds: [...entryIds],
+        removeBundles: [],
+        repairPaths: [],
+      })
+    } catch (error) {
+      this.opts.log(`plugin guard patrol threw: ${String(error)}`)
     }
   }
 
@@ -342,8 +550,11 @@ export class PluginGuard {
     }
   }
 
-  /** 统一落盘：修复损坏层 → 移出 bundle → 写隔离行（受上限约束）→ 台账 → 日志。 */
-  private apply(findings: readonly GuardFinding[], actions: { entryIds: readonly string[]; removeBundles: readonly string[]; repairPaths: readonly string[] }): boolean {
+  /**
+   * 统一落盘：修复损坏层 → 移出 bundle → 写隔离行（受上限约束）→ 台账 → 日志 → 通知。
+   * suppressedByBudget = 有可动作 entryIds 因预算截断而未写行（considerCrash 的连击依据）。
+   */
+  private apply(findings: readonly GuardFinding[], actions: { entryIds: readonly string[]; removeBundles: readonly string[]; repairPaths: readonly string[] }): { acted: boolean; suppressedByBudget: boolean } {
     let acted = false
     if (actions.repairPaths.length > 0) {
       try {
@@ -367,6 +578,7 @@ export class PluginGuard {
     }
     const budget = (this.opts.maxQuarantined ?? 8) - this.quarantined
     const capped = budget > 0 ? actions.entryIds.slice(0, budget) : []
+    const suppressedByBudget = actions.entryIds.length > capped.length
     if (capped.length > 0) {
       try {
         const { written } = quarantineEntries({ dshHome: this.opts.dshHome, ids: capped })
@@ -385,10 +597,17 @@ export class PluginGuard {
     }
     try {
       const added = this.ledger.record(findings)
-      if (added.length > 0) this.opts.log(`plugin guard: 新增 ${added.length} 条问题记录`)
+      if (added.length > 0) {
+        this.opts.log(`plugin guard: 新增 ${added.length} 条问题记录`)
+        try {
+          this.opts.onNewFindings?.(added)
+        } catch {
+          /* 通知通道自身故障不得影响守卫主流程 */
+        }
+      }
     } catch (error) {
       this.opts.log(`plugin guard ledger threw: ${String(error)}`)
     }
-    return acted
+    return { acted, suppressedByBudget }
   }
 }
