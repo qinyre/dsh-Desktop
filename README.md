@@ -14,7 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.1-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.2-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
 
@@ -87,7 +87,7 @@ dsh 的插件以整棵树为单位激活：任何一个插件导入失败、与�
 
 ## 工作原理
 
-DSH Desktop 是一个 Electron 壳。启动时它通过 `ELECTRON_RUN_AS_NODE` 把 Electron 二进制当作 Node 运行时，拉起子进程 `dsh web --port 0 --host 127.0.0.1`，从 stdout 的就绪行解析出实际端口，再让窗口加载 `http://127.0.0.1:<端口>`。整个应用只有一个运行时，不存在 Node 版本分裂；服务也只绑定随机回环端口，不会暴露到网络。应用还会在 userData 里生成一个 pnpm shim 并前置进 sidecar 的 PATH——dsh CLI 和插件市场的安装子进程由此在未安装 Node 的机器上也能找到 pnpm。
+DSH Desktop 是一个 Electron 壳。启动时它通过 `ELECTRON_RUN_AS_NODE` 把 Electron 二进制当作 Node 运行时，拉起子进程 `dsh web --no-open --port 0 --host 127.0.0.1`，从 stdout 的就绪行解析出实际端口，再让窗口加载 `http://127.0.0.1:<端口>`。整个应用只有一个运行时，不存在 Node 版本分裂；服务也只绑定随机回环端口，不会暴露到网络。应用还会在 userData 里生成一个 pnpm shim 并前置进 sidecar 的 PATH——dsh CLI 和插件市场的安装子进程由此在未安装 Node 的机器上也能找到 pnpm。
 
 本地 HTTP API 没有鉴权，这是上游的设计——Origin 栅栏防的是 DNS rebinding，不是本地进程。以当前用户身份运行的任何进程都能访问它，但此类进程同样能直接读取 dsh 落盘的凭据，因此实际的额外风险仅在「本机已被攻陷」这一前提下成立。栅栏的准确范围见上游 [connection 文档](https://github.com/deepseek-ai/deepseek-harness)。
 

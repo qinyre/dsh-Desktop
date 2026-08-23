@@ -54,7 +54,7 @@ npm run dist:signed
 手动验签：
 
 ```powershell
-Get-AuthenticodeSignature "release\DSH Desktop Setup 0.1.0.exe" | Format-List Status, SignerCertificate
+Get-AuthenticodeSignature "release\DSH-Desktop-Setup-0.1.0.exe" | Format-List Status, SignerCertificate
 ```
 
 ## CI
