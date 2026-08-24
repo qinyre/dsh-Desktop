@@ -14,7 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Release](https://img.shields.io/github/v/release/qinyre/dsh-Desktop-4D6BFE)](https://github.com/qinyre/dsh-Desktop/releases)
+[![Release](https://img.shields.io/github/v/release/qinyre/dsh-Desktop)](https://github.com/qinyre/dsh-Desktop/releases)
 [![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.2-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
