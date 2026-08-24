@@ -14,6 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Release](https://img.shields.io/github/v/release/qinyre/dsh-Desktop-4D6BFE)](https://github.com/qinyre/dsh-Desktop/releases)
 [![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.2-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
@@ -40,7 +41,7 @@ DeepSeek Harness 自带一流的 Web UI，但它假定用户具备一套开发�
 
 从 [Releases](https://github.com/qinyre/dsh-Desktop/releases) 下载最新的 `DSH-Desktop-Setup-x.x.x.exe` 并运行。
 
-环境要求：Windows 10/11 x64。
+环境要求：Windows 10/11 x64。安装到当前用户目录，无需管理员权限。
 
 > 安装器未做代码签名（个人可办的证书最低约 €105/年，暂不购买），首次运行可能被 Windows SmartScreen 拦截——此时选择「更多信息」→「仍要运行」即可。如需为自己的构建签名，见 [docs/signing.md](docs/signing.md)。
 
@@ -68,13 +69,21 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 
 提供一个独立于市场的「安装」标签页：输入包名（npm spec、`github:user/repo` 或本地路径）即可安装任意 dsh 插件。已安装列表同时支持逐个检查更新——npm 安装对照 registry 最新版本，github 安装对照仓库新提交——并就地升级；页面上的「重启服务」按钮交由应用壳层执行。
 
+![「安装」标签页](docs/images/install-tab.png)
+
 ### 技能与 MCP · [dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)
 
 在设置页加一个与「模型」「插件」平级的「技能与 MCP」分区：技能目录在此新建、编辑、删除，MCP 服务器（stdio 命令或 http URL）同样页面化管理；Claude Code 和 Codex 已有的技能与 MCP 配置可以直接导入，本机安装过哪些 agent，便相应提供哪些导入来源。每个技能可以单独开关是否加载，本地目录或 GitHub 仓库都能注册成额外的技能来源；分区里另有技能与 MCP 两个精选市场，一键安装、一键卸载。技能目录开箱自带 skill-creator 和 find-skills 两个只读的起步技能。
 
+![「技能」标签页](docs/images/capabilities-skills.png)
+
 ### 归档与刻度尺 · [dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)
 
 设置页新增一级分区「归档管理」——归档的会话在这里浏览、预览、一键恢复，自动归档规则可选配；对话区左缘同时新增刻度尺，每格对应一次发言，悬停预览、点击跳转。
+
+![对话刻度尺](docs/images/atlas-rail.png)
+
+![归档管理](docs/images/atlas-archive.png)
 
 > 安装插件会在本机执行第三方代码（pnpm 生命周期脚本），这一点与 dsh CLI 相同。请只安装来源可信的插件。
 
@@ -89,6 +98,21 @@ dsh 的插件以整棵树为单位激活：任何一个插件导入失败、与�
 以上机制都假定应用内界面最终可用，而管理插件的应用内插件页本身也是插件——故障严重到页面无法加载时，它就帮不上忙了。为此托盘菜单里有一条独立的「插件管理」通道：不依赖服务与页面，直接列出全部已安装插件及其启用状态（并注明是守卫停用、页面内停用还是手动停用），可逐一停用或启用，也可手动进入安全模式或一键全部启用。每次变更后自动重启服务使之确定生效，连续操作会合并为一次重启。被守卫移出启动清单的损坏插件包同样列在此处，确认后可重新加入并重启验证；若确实损坏，守卫会再次将其移出。
 
 应用启动后守卫持续运行：定期检查各插件的运行状态，运行中发生故障的插件会被即时停用并记录，长期等待所需服务的插件同样留档，并体现在下一份隔离报告中。会话中途新装插件挂载失败也在这里兜住——服务不重启、故障只落在日志里，守卫巡检日志确认后同样停用，并以托盘气泡即时告知。
+
+## 排障与反馈
+
+多数启动故障应用会自行恢复（机制见上文[插件运行保障](#插件运行保障)）：被隔离的插件可从托盘的「插件隔离报告」一键重新启用，页面打不开时可改用托盘的「插件管理」。
+
+仍未恢复时：从托盘图标完全退出后重新启动；查看日志 `%APPDATA%\DSH Desktop\logs\sidecar.log`——插件与启动问题都会落在这里（连同最近几轮的轮转副本）；重装应用不影响数据，见下节。
+
+问题请通过 [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues) 反馈，附上上述日志、Windows 版本与安装包版本号。安全问题请勿开公开 issue，按 [SECURITY.md](SECURITY.md) 的渠道报告。
+
+## 你的数据
+
+全部用户数据集中在一个目录：`%APPDATA%\DSH Desktop\dsh-home`，包括会话记录（append-only 日志，进程崩溃也不丢已落盘的对话）、API key 与凭据、设置，以及装进应用自身 profile 的插件。复制整个目录即可完成手动备份；换机迁移时会话与凭据直接可用，个别插件可能需要重装。
+
+- 安装更新前，应用会自动把该目录完整备份到 `%APPDATA%\DSH Desktop\backups`，保留最近一份；
+- 卸载应用不会删除这些数据；确认不再需要时，删除 `%APPDATA%\DSH Desktop` 目录即可彻底清除。
 
 ## 工作原理
 

@@ -14,6 +14,7 @@ Install and run. No Node.js, pnpm, or terminal required.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Release](https://img.shields.io/github/v/release/qinyre/dsh-Desktop-4D6BFE)](https://github.com/qinyre/dsh-Desktop/releases)
 [![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.2-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 </div>
@@ -40,7 +41,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 
 Download the latest `DSH-Desktop-Setup-x.x.x.exe` from the [Releases](https://github.com/qinyre/dsh-Desktop/releases) page and run it.
 
-Requirements: Windows 10/11 x64.
+Requirements: Windows 10/11 x64. Installs per-user; no administrator rights required.
 
 > The installer is not code-signed (the cheapest certificate an individual can buy is around €105/year — skipped for now), so Windows SmartScreen may block the first run; choose "More info" → "Run anyway". To sign your own builds, see [docs/signing.md](docs/signing.md).
 
@@ -68,13 +69,21 @@ A visual market inside the Web UI's settings page, covering the curated [awesome
 
 Contributes an "Install" tab that skips the market: type a package name (npm spec, `github:user/repo`, or a local path) and any dsh plugin installs directly. The installed list doubles as an updater — npm installs compare against the registry's latest version, github installs against new upstream commits — with in-place upgrades; the tab's restart-service button hands the restart to the app shell.
 
+![The "Install" tab](docs/images/install-tab.png)
+
 ### Skills & MCP · [dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)
 
 Adds a "Skills & MCP" section to the settings page, level with Models and Plugins: create, edit, and delete skills in the catalog; manage MCP servers (stdio commands or http URLs) the same way; pull in skills plus MCP config from Claude Code or Codex — whichever of those agents exists on the machine shows up as a source. Every skill can be toggled on or off individually, local folders or GitHub repos can be registered as extra skill sources, and the section's own skill and MCP markets install curated entries with one click. The catalog ships with two read-only starter skills, skill-creator and find-skills.
 
+![The "Skills" tab](docs/images/capabilities-skills.png)
+
 ### Archive & tick rail · [dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)
 
 An "Archive management" section in Settings — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump.
+
+![Conversation tick rail](docs/images/atlas-rail.png)
+
+![Archive management](docs/images/atlas-archive.png)
 
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 
@@ -89,6 +98,21 @@ Some crashes leave no diagnostic trace — for example, a plugin terminating the
 Everything above assumes the in-app interface is eventually reachable — yet the plugin page itself is a plugin, and when the failure is bad enough that the page never loads, it is of no help. The tray menu therefore carries an independent "Plugins" section that works without the service and without any page: it lists all installed plugins with their enabled state (noting whether each was disabled by the guard, from the in-app page, or by hand), disables or re-enables them one by one, enters safe mode on demand, and brings everything back in one click. Every change is followed by an automatic service restart so it takes effect deterministically; rapid consecutive actions merge into one restart. Damaged packages the guard removed from the launch list appear here too and can be readmitted after a confirmation, with a restart to verify — if they really are broken, the guard removes them again.
 
 The guard remains active after launch: plugin health is checked periodically, plugins that fail at runtime are disabled and recorded immediately, and plugins left waiting indefinitely for a service that never arrives are also recorded, to appear in the next quarantine report. A plugin that fails to mount while the service keeps running — the failure lands only in the log — is caught by a periodic log patrol and announced with a tray notification.
+
+## Troubleshooting & feedback
+
+Most launch failures recover on their own (see [Plugin guard](#plugin-guard) above): quarantined plugins can be re-enabled with one click from the tray's plugin report, and when the page won't open at all, the tray's "Plugins" section still works.
+
+If it stays broken: quit completely from the tray icon and start again; check the log at `%APPDATA%\DSH Desktop\logs\sidecar.log` — plugin and startup problems all land there (with a few rotated older copies); reinstalling the app does not touch your data (next section).
+
+Please report problems via [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues), attaching that log plus your Windows version and installer version. For security issues, use the channels in [SECURITY.md](SECURITY.md) instead of a public issue.
+
+## Your data
+
+All user data lives in one place: `%APPDATA%\DSH Desktop\dsh-home` — sessions (append-only logs, so a crashed process loses nothing already saved), API keys and credentials, settings, and the plugins installed into the app's own profile. Copying the directory is a complete manual backup; when migrating to another machine, sessions and credentials work as-is, and the odd plugin may need a reinstall.
+
+- Before installing an update, the app automatically backs the whole directory up to `%APPDATA%\DSH Desktop\backups`, keeping the most recent copy.
+- Uninstalling does not delete this data; remove the `%APPDATA%\DSH Desktop` folder to erase everything.
 
 ## How it works
 
