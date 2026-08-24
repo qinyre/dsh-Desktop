@@ -57,8 +57,12 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 一个可抛弃的控制台），PS 内 FreeConsole + AttachConsole 到还活着的旧进程
  * 控制台、等旧进程退场后以 -NoNewWindow 拉起 successor——真·附加回原终端，
  * 日志续打且 Ctrl+C 直达；attach 失败自动退化为隐藏分离路径。
+ * 0.3.9 起：交接链挂起看门狗——多实例并发的更新会产生多个 relay，旧方案
+ * 谁先抢到端口算谁的，输家们无限滞留。认领文件仲裁出唯一交接者，其余 relay
+ * 直接退场；看门狗超时（DSH_INSTALLER_WATCHDOG_MS 可调）自动退化为隐藏
+ * 分离路径，交接链不再可能永久卡住。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.8'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.9'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
