@@ -156,6 +156,8 @@ pnpm run dist:signed    # build + sign + verify the installer (credential env va
 
 Dev mode resolves the upstream checkout at `../deepseek-harness` (override with `DESKTOP_DSH_REPO`); `DESKTOP_DSH_MODE=npm` switches to the bundled registry package. Smokes self-skip when their prerequisites are absent.
 
+To ship a Linux release, run `pnpm run dist:linux` on WSL/Linux and upload four files to the same GitHub Release manually: `DSH-Desktop-x.x.x.AppImage`, `DSH-Desktop-x.x.x.AppImage.blockmap`, `DSH-Desktop-x.x.x.deb`, and `latest-linux.yml`. The AppImage's in-app updater depends on the latter two (differential downloads) — skipping them cuts off Linux auto-updates. Keep asset filenames byte-identical to the urls inside latest-linux.yml; don't rename on upload.
+
 ### Known patches
 
 The five patch files under `patches/` implement three fixes, declared as pnpm patchedDependencies and applied automatically by `pnpm install`; a dsh upgrade that breaks any of them fails loudly at install time instead of silently regressing. Full background and rationale: [docs/patches.md](docs/patches.md).

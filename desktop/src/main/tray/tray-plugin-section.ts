@@ -42,6 +42,7 @@ const WATCH_RETRY_MAX_MS = 30_000
 
 export class TrayPluginSection {
   private watchers = new Map<string, FSWatcher>()
+  private attachLoggedDirs = new Set<string>()
   private watchBackoffMs = 1_000
   private watchRetryTimer: NodeJS.Timeout | undefined
   private refreshTimer: NodeJS.Timeout | undefined
@@ -111,7 +112,12 @@ export class TrayPluginSection {
         })
         this.adoptWatcher(dir, watcher)
       } catch (error) {
-        this.opts.log(`[dsh-desktop] tray plugin watch attach failed (${dir}): ${String(error)}`)
+        // profiles/web 在首启预装完成前常态缺失，退避重试是设计内行为——每个目录只留
+        // 一条日志，防 30s 周期重试把日志刷成洪水。
+        if (!this.attachLoggedDirs.has(dir)) {
+          this.attachLoggedDirs.add(dir)
+          this.opts.log(`[dsh-desktop] tray plugin watch attach failed (${dir}): ${String(error)}`)
+        }
         this.scheduleWatchRetry()
       }
     }

@@ -22,9 +22,16 @@ describe('probeDbusName（busctl→gdbus 级联 + 判定矩阵）', () => {
   it('falls back to gdbus when busctl is not installed', async () => {
     const exec: DbusExec = async (cmd) => {
       if (cmd === 'busctl') throw enoent()
-      return { stdout: "('true',)" }
+      return { stdout: '(true,)' }
     }
     await expect(probeDbusName(uniqueName(), exec)).resolves.toBe(true)
+  })
+  it('gdbus prints GVariant booleans without quotes — "(false,)" is a negative', async () => {
+    const exec: DbusExec = async (cmd) => {
+      if (cmd === 'busctl') throw enoent()
+      return { stdout: '(false,)' }
+    }
+    await expect(probeDbusName(uniqueName(), exec)).resolves.toBe(false)
   })
   it('both tools missing → unknown (null)', async () => {
     const exec: DbusExec = async () => { throw enoent() }

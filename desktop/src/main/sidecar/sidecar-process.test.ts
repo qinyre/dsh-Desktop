@@ -41,11 +41,11 @@ describe('killSidecar（平台 kill 适配）', () => {
     await vi.advanceTimersByTimeAsync(3_000)
     expect(child.signals).toEqual(['SIGTERM'])
   })
-  it('already-killed child takes the plain-kill path even on posix', async () => {
+  it('already-killed child takes the SIGKILL shortcut on posix (a bare kill() is just another SIGTERM)', async () => {
     const child = new FakeChild()
     child.killed = true
     const done = killSidecar(child as never, 'linux')
     await done
-    expect(child.signals).toEqual([undefined])
+    expect(child.signals).toEqual(['SIGKILL'])
   })
 })

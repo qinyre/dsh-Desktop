@@ -71,11 +71,13 @@ if (!existsSync(exe)) {
   const home = join(iso, 'dsh-home')
   console.log(`boot: copying ${layout.unpackedName} to ${appDir} (isolated — no dev node_modules ancestors)`)
   cpSync(join(unpacked, '..', '..'), appDir, { recursive: true })
-  // Node 的 cp 不保证跨文件系统保留执行位（mode 选项是 copyFile 修饰符而非权限位），
-  // Linux 下丢失 +x 会让 spawn 直接 EACCES：复制后防御性补一次。
-  if (!isWin) chmodSync(join(appDir, layout.exeName), 0o755)
+  // 启动用的是隔离副本里的 exe（连同 entry 一起彻底脱离开发树）；Node 的 cp 不保证跨
+  // 文件系统保留执行位（mode 选项是 copyFile 修饰符而非权限位），Linux 下丢失 +x 会让
+  // spawn 直接 EACCES——复制后防御性补一次。
+  const isoExe = join(appDir, layout.exeName)
+  if (!isWin) chmodSync(isoExe, 0o755)
   const entry = join(appDir, 'resources', 'app.asar.unpacked', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-  const child = spawn(exe, ['--expose-internals', entry, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'], {
+  const child = spawn(isoExe, ['--expose-internals', entry, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'], {
     cwd: iso,
     env: {
       ELECTRON_RUN_AS_NODE: '1',

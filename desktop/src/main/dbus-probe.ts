@@ -42,7 +42,8 @@ async function probeOnce(name: string, exec: DbusExec): Promise<boolean | null> 
       'call', '--session', '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus',
       '--method', 'org.freedesktop.DBus.NameHasOwner', name,
     ], { timeout: PROBE_TIMEOUT_MS })
-    return /\('true',\)/.test(stdout)
+    // gdbus 的 GVariant 文本输出：布尔返回打印为 "(true,)"——引号只用于字符串值。
+    return /\(true,\)/.test(stdout)
   } catch (error) {
     // 最后一个工具：缺失（ENOENT）或超时都意味着「探测不出来」= 未知；工具在但总线
     // 缺席 = 服务确定不存在。
