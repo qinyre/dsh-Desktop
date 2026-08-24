@@ -45,6 +45,10 @@ Requirements: Windows 10/11 x64. Installs per-user; no administrator rights requ
 
 > The installer is not code-signed (the cheapest certificate an individual can buy is around €105/year — skipped for now), so Windows SmartScreen may block the first run; choose "More info" → "Run anyway". To sign your own builds, see [docs/signing.md](docs/signing.md).
 
+Linux (x64) ships two packages. The `DSH-Desktop-x.x.x.AppImage` runs directly after `chmod +x`, and later versions download and install themselves through the in-app update check; the `DSH-Desktop-x.x.x.deb` installs through your package manager and is upgraded by downloading a newer deb manually (the in-app update check stays disabled under deb installs, so it never claims a false "up to date"). The AppImage uses a statically linked runtime, so it doesn't depend on the system FUSE library. On distributions that restrict unprivileged user namespaces (Ubuntu 24.04 and friends) the app automatically runs without the Chromium sandbox — expected behavior in the AppImage ecosystem; prefer the deb if you want the sandbox (its install script configures the matching AppArmor allowance).
+
+The tray icon and desktop notifications rely on services that mainstream desktop environments provide. When no tray host exists, closing the window quits the app — it never hides the window into a tray that isn't there.
+
 ### First run
 
 The app starts the sidecar and opens the dsh Web UI. Onboarding is identical to the browser version: set your API key in **Settings → Models** and choose a workspace directory.
@@ -105,13 +109,13 @@ The guard remains active after launch: plugin health is checked periodically, pl
 
 Most launch failures recover on their own (see [Plugin guard](#plugin-guard) above): quarantined plugins can be re-enabled with one click from the tray's plugin report, and when the page won't open at all, the tray's "Plugins" section still works.
 
-If it stays broken: quit completely from the tray icon and start again; check the log at `%APPDATA%\DSH Desktop\logs\sidecar.log` — plugin and startup problems all land there (with a few rotated older copies); reinstalling the app does not touch your data (next section).
+If it stays broken: quit completely from the tray icon and start again; check the log at `%APPDATA%\DSH Desktop\logs\sidecar.log` (on Linux: `~/.config/DSH Desktop/logs/sidecar.log`) — plugin and startup problems all land there (with a few rotated older copies); reinstalling the app does not touch your data (next section).
 
 Please report problems via [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues), attaching that log plus your Windows version and installer version. For security issues, use the channels in [SECURITY.md](SECURITY.md) instead of a public issue.
 
 ## Your data
 
-All user data lives in one place: `%APPDATA%\DSH Desktop\dsh-home` — sessions (append-only logs, so a crashed process loses nothing already saved), API keys and credentials, settings, and the plugins installed into the app's own profile. Copying the directory is a complete manual backup; when migrating to another machine, sessions and credentials work as-is, and the odd plugin may need a reinstall.
+All user data lives in one place: `%APPDATA%\DSH Desktop\dsh-home` (on Linux: `~/.config/DSH Desktop/dsh-home`) — sessions (append-only logs, so a crashed process loses nothing already saved), API keys and credentials, settings, and the plugins installed into the app's own profile. Copying the directory is a complete manual backup; when migrating to another machine, sessions and credentials work as-is, and the odd plugin may need a reinstall.
 
 - Before installing an update, the app automatically backs the whole directory up to `%APPDATA%\DSH Desktop\backups`, keeping the most recent copy.
 - Uninstalling does not delete this data; remove the `%APPDATA%\DSH Desktop` folder to erase everything.
@@ -140,11 +144,12 @@ pnpm test               # unit tests
 pnpm run smoke:sidecar  # boots a real dsh sidecar, asserts readiness + /api
 pnpm run smoke:guard    # plugin-guard full-chain smoke: mock plugins inject conflicts, missing deps, and crashes; asserts auto-quarantine then a clean boot
 pnpm run smoke:tray     # tray plugin manager smoke: disables/enables plugins against a live sidecar, asserts live application and restore round-trip
-DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # clean-PATH market seed smoke (Windows)
+DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # clean-PATH market seed smoke
 pnpm run smoke:picker   # workspace-picker koffi patch smoke (Windows)
 pnpm run smoke:hideconsole  # subprocess windowsHide patch smoke (Windows)
 pnpm run check:electron # asserts Electron's embedded Node satisfies dsh's engines
 pnpm run dist           # build the NSIS installer
+pnpm run dist:linux     # build the Linux AppImage + deb (must run on Linux/WSL)
 pnpm run verify:bundle  # packaged-app self-check: dependency closure + real boot from an isolated copy (run before every release)
 pnpm run dist:signed    # build + sign + verify the installer (credential env vars: docs/signing.md)
 ```
@@ -175,7 +180,8 @@ desktop/
 ## Roadmap
 
 - [x] First public release + update feed (v0.1.0 shipped; startup checks GitHub Releases, asks before installing with a backup)
-- [ ] macOS and Linux builds
+- [x] Linux builds (AppImage + deb, starting with v0.1.16; Linux CI and packaged-app self-check included)
+- [ ] macOS build
 - [ ] Route B: `file://` + IPC bridge (drops the local HTTP surface entirely)
 
 ## Acknowledgments

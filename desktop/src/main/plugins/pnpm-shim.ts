@@ -1,4 +1,5 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * 免 Node 环境的 pnpm 执行（设计书 §7）：shim 把调用改写为
@@ -14,10 +15,11 @@ export async function ensurePnpmShim(opts: {
   mkdirSync(opts.shimDir, { recursive: true })
   const pnpmCli = opts.resolvePnpmCli()
   if (platform === 'win32') {
-    // dsh 的 plugin.ts 在 win32 用 shell:true 解析 pnpm → pnpm.cmd
-    writeFileSync(`${opts.shimDir}\\pnpm.cmd`, `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${opts.execPath}" "${pnpmCli}" %*\r\n`, 'utf8')
+    // dsh 的 plugin.ts 在 win32 用 shell:true 解析 pnpm → pnpm.cmd（join 按宿主分隔符
+    // 落名：win32 测试注入在 posix 宿主上也要写到正确的 pnpm.cmd）
+    writeFileSync(join(opts.shimDir, 'pnpm.cmd'), `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${opts.execPath}" "${pnpmCli}" %*\r\n`, 'utf8')
   } else {
-    const file = `${opts.shimDir}/pnpm`
+    const file = join(opts.shimDir, 'pnpm')
     writeFileSync(file, `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 "${opts.execPath}" "${pnpmCli}" "$@"\n`, 'utf8')
     chmodSync(file, 0o755)
   }

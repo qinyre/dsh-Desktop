@@ -45,6 +45,10 @@ DeepSeek Harness 自带一流的 Web UI，但它假定用户具备一套开发�
 
 > 安装器未做代码签名（个人可办的证书最低约 €105/年，暂不购买），首次运行可能被 Windows SmartScreen 拦截——此时选择「更多信息」→「仍要运行」即可。如需为自己的构建签名，见 [docs/signing.md](docs/signing.md)。
 
+Linux（x64）提供两种包。`DSH-Desktop-x.x.x.AppImage` 下载后 `chmod +x` 即可直接运行，后续版本经应用内的更新检查自动下载安装；`DSH-Desktop-x.x.x.deb` 走系统包管理器安装，升级需手动下载新版覆盖（deb 安装下应用内的更新检查不启用，避免误导）。AppImage 打包使用静态链接的运行时，不依赖系统的 FUSE 库；在 Ubuntu 24.04 这类限制了非特权用户命名空间的发行版上，应用会自动以无 Chromium 沙箱的模式运行——这是 AppImage 生态的预期行为，介意的话改用 deb（其安装脚本会自动配置对应的 AppArmor 授权）。
+
+托盘图标与桌面通知依赖桌面环境自带的服务（主流桌面均内置）。运行环境里没有托盘宿主时，关闭窗口就是退出应用，不会把窗口藏进一个不存在的托盘。
+
 ### 首次运行
 
 应用启动后会打开 dsh Web UI，引导流程与浏览器版一致：在 **Settings → Models** 里配置 API key，选择工作区目录即可。
@@ -105,13 +109,13 @@ dsh 的插件以整棵树为单位激活：任何一个插件导入失败、与�
 
 多数启动故障应用会自行恢复（机制见上文[插件运行保障](#插件运行保障)）：被隔离的插件可从托盘的「插件隔离报告」一键重新启用，页面打不开时可改用托盘的「插件管理」。
 
-仍未恢复时：从托盘图标完全退出后重新启动；查看日志 `%APPDATA%\DSH Desktop\logs\sidecar.log`——插件与启动问题都会落在这里（连同最近几轮的轮转副本）；重装应用不影响数据，见下节。
+仍未恢复时：从托盘图标完全退出后重新启动；查看日志 `%APPDATA%\DSH Desktop\logs\sidecar.log`（Linux 为 `~/.config/DSH Desktop/logs/sidecar.log`）——插件与启动问题都会落在这里（连同最近几轮的轮转副本）；重装应用不影响数据，见下节。
 
 问题请通过 [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues) 反馈，附上上述日志、Windows 版本与安装包版本号。安全问题请勿开公开 issue，按 [SECURITY.md](SECURITY.md) 的渠道报告。
 
 ## 你的数据
 
-全部用户数据集中在一个目录：`%APPDATA%\DSH Desktop\dsh-home`，包括会话记录（append-only 日志，进程崩溃也不丢已落盘的对话）、API key 与凭据、设置，以及装进应用自身 profile 的插件。复制整个目录即可完成手动备份；换机迁移时会话与凭据直接可用，个别插件可能需要重装。
+全部用户数据集中在一个目录：`%APPDATA%\DSH Desktop\dsh-home`（Linux 为 `~/.config/DSH Desktop/dsh-home`），包括会话记录（append-only 日志，进程崩溃也不丢已落盘的对话）、API key 与凭据、设置，以及装进应用自身 profile 的插件。复制整个目录即可完成手动备份；换机迁移时会话与凭据直接可用，个别插件可能需要重装。
 
 - 安装更新前，应用会自动把该目录完整备份到 `%APPDATA%\DSH Desktop\backups`，保留最近一份；
 - 卸载应用不会删除这些数据；确认不再需要时，删除 `%APPDATA%\DSH Desktop` 目录即可彻底清除。
@@ -140,11 +144,12 @@ pnpm test               # 单元测试
 pnpm run smoke:sidecar  # 真实拉起 dsh sidecar，断言就绪 + /api 可达
 pnpm run smoke:guard    # 插件守卫全链路冒烟：自制 mock 插件制造冲突/缺依赖/崩溃，断言自动隔离后照常就绪
 pnpm run smoke:tray     # 托盘插件管理冒烟：真 sidecar 运行态下停用/启用插件，断言 live 生效与恢复往返
-DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # 干净 PATH 市场预装冒烟（Windows）
+DSH_DESKTOP_PLUGIN_SMOKE=1 pnpm run smoke:market   # 干净 PATH 市场预装冒烟
 pnpm run smoke:picker   # 工作区选择器 koffi 补丁冒烟（Windows）
 pnpm run smoke:hideconsole  # 子进程 windowsHide 补丁冒烟（Windows）
 pnpm run check:electron # 断言 Electron 内置 Node 满足 dsh 的 engines 要求
 pnpm run dist           # 构建 NSIS 安装器
+pnpm run dist:linux     # 构建 Linux AppImage + deb（须在 Linux/WSL 环境执行）
 pnpm run verify:bundle  # 打包产物自检：依赖闭包 + 隔离路径真实启动（发布前必跑）
 pnpm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/signing.md）
 ```
@@ -175,7 +180,8 @@ desktop/
 ## 路线图
 
 - [x] 首个公开发布 + 更新源（v0.1.0 已发；启动时检查 GitHub Releases，安装前询问并备份）
-- [ ] macOS 与 Linux 构建
+- [x] Linux 构建（AppImage + deb，随 v0.1.16 起；含 Linux CI 与产物自检）
+- [ ] macOS 构建
 - [ ] 路线 B：`file://` + IPC 桥接（彻底去掉本地 HTTP 面）
 
 ## 致谢
