@@ -14,6 +14,13 @@ export interface PluginGuardOpts {
   maxQuarantined?: number
   /** 台账新增条目回调（ready 态运行期隔离的用户可见通知入口；自身抛错被吞掉）。 */
   onNewFindings?: (added: GuardFinding[]) => void
+  /**
+   * sidecar 当前状态只读探针（生产为 SidecarManager state）。提供时 patrol 只在
+   * 'ready' 态动作：ready→restart→spawning 的活体重启路上轮询监视器并不停（只在
+   * crashed/failed 才 stop），boot 窗口内的瞬时失败行 + 上一代的两轮确认残留会把
+   * 本会自愈的瞬态固化成永久隔离——非 ready 一律只清确认窗不诊断。
+   */
+  sidecarState?: () => string | undefined
 }
 
 const nowIso = (): string => new Date().toISOString()
@@ -390,9 +397,10 @@ export class PluginGuard {
    * dsh 页在场时转发）。宿主对客户端树零感知——pluginInventory 只投影宿主 loader，客户端
    * 失败唯一可靠信号就是 boot.tsx console.error 的原文（与宿主共用同一 vendored loader
    * 文案，diagnoseLog 的签名直接适用）。隔离目标必须按 name 反查宿主行（客户端 entry id
-   * 每页随机），解析不到就报告并明示「卸载重装」，绝不写匹配不到任何宿主行的惰性行。
+   * 每页随机），解析不到就报告并明示「卸载重装」，绝不写匹配不到任何宿主行的惰性行；
+   * 反查命中只按用户域行落停用（系统组合行 report-only，与 considerRuntime 同口径）。
    * 返回 relevant（签名命中=页面处于失败 boot）与 resolvable（至少一个 finding 定位到
-   * 宿主行=reload 可恢复），调用方据此决定 reload 重试。
+   * 可动作的宿主行=reload 可恢复），调用方据此决定 reload 重试。
    */
   considerClientConsole(text: string): { relevant: boolean; acted: boolean; resolvable: boolean } {
     try {
@@ -401,6 +409,11 @@ export class PluginGuard {
       const findings = diagnoseLog(text, table)
       if (findings.length === 0) return { relevant: true, acted: false, resolvable: false }
       const disabled = disabledEntryIds({ dshHome: this.opts.dshHome })
+      // 与 considerRuntime/安全模式同口径：自动停用只作用于用户域行（tracked bundle 行
+      // 或用户层行）。渲染器只报模块名，同名行里可能混着系统组合行（dsh-web-app 级）——
+      // 失败方恰好是系统件、或系统件与第三方撞 ns 时，按名全停会把核心 fiber 拉下马，
+      // 系统行一律 report-only；同名存在用户行时停用户行即可解除冲突。
+      const userDomain = new Set(userDomainRowIds(table))
       const entryIds = new Set<string>()
       let resolvable = false
       const resolved: GuardFinding[] = []
@@ -421,13 +434,24 @@ export class PluginGuard {
           })
           continue
         }
+        const actionableIds = hostIds.filter(id => userDomain.has(id))
+        if (actionableIds.length === 0) {
+          // 只解析到系统域行：仅记录。reload 重试无意义（写不了任何行、重载必然复现），
+          // resolvable 保持 false，调用方直接走一次性报告而不是空转三轮 reload。
+          resolved.push({
+            ...finding, key: stableKey, id: hostIds[0],
+            category: classifyDetail(finding.reason, finding.category), source: 'client',
+            reason: `客户端插件启动失败（系统级组合行，仅记录未自动停用）：${finding.reason}`,
+          })
+          continue
+        }
         resolvable = true
         resolved.push({
-          ...finding, key: stableKey, id: hostIds[0],
+          ...finding, key: stableKey, id: actionableIds[0],
           category: classifyDetail(finding.reason, finding.category), source: 'client',
           reason: `客户端插件启动失败（浏览器端）：${finding.reason}`,
         })
-        for (const id of hostIds) {
+        for (const id of actionableIds) {
           if (!disabled.has(id)) entryIds.add(id)
         }
       }
@@ -457,6 +481,14 @@ export class PluginGuard {
    */
   patrol(): void {
     try {
+      // 代际门（sidecarState 提供时）：非 ready 一律跳过并清空两轮确认窗。活体重启
+      // （ready→restart→spawning）路上轮询监视器仍在跑，boot 窗口的日志混着上一代
+      // 输出与瞬时失败行——带着上一代 prev 进去，「两轮确认」会被跨代拼出来。
+      const state = this.opts.sidecarState?.()
+      if (state !== undefined && state !== 'ready') {
+        this.patrolActionablePrev.clear()
+        return
+      }
       const text = this.opts.readLog()
       if (text === null || text === '') return
       const window = text.slice(-PluginGuard.PATROL_WINDOW)

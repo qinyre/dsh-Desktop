@@ -223,6 +223,10 @@ if (!gotLock) {
         guard?.markReported()
         tray.refresh()
       },
+      // patrol 的代际门：ready→restart→spawning 的活体重启路上轮询监视器不停（只在
+      // crashed/failed 才 stop），boot 窗口内巡逻会把上一代确认残留与瞬时失败行拼成
+      // 「两轮确认」——非 ready 一律清窗跳过。
+      sidecarState: () => sidecar?.state,
     })
     if (guard !== undefined) {
       windows?.showActivity('正在检查插件安全状态…')

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
 import { parse, parseDocument, YAMLMap, YAMLSeq } from 'yaml'
+import { patchYamlOptions } from './patch-layers'
 import { resolveRuntime, type RuntimeMode } from '../sidecar/runtime-resolver'
 
 /** 预装的市场版本：只在预装时钉住，市场自身可在设置页走更新通道升级。 */
@@ -210,7 +211,7 @@ const MARKET_ENTRY_ID = 'dsh-market'
 export function applyMarketConfig(profileDir: string): void {
   const patchPath = join(profileDir, 'cordis.patch.yml')
   const content = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
-  const doc = parseDocument(content)
+  const doc = parseDocument(content, patchYamlOptions) // 宿主 !!js 方言（见 patch-layers）：注册后不告警不依赖降级
   if (doc.errors.length > 0) {
     throw new Error(`cordis.patch.yml does not parse: ${doc.errors[0]?.message ?? String(doc.errors[0])}`)
   }
@@ -232,7 +233,7 @@ export function applyMarketConfig(profileDir: string): void {
   seq.items.push(row)
   setBlockStyle(seq)
   const next = doc.toString({ lineWidth: 0 })
-  parse(next) // 写前自检：live watcher 与下次启动都对这个文件 fail loud，绝不落盘可能解析失败的层
+  parse(next, patchYamlOptions) // 写前自检：live watcher 与下次启动都对这个文件 fail loud，绝不落盘可能解析失败的层
   writeFileSync(patchPath, next, 'utf8')
 }
 

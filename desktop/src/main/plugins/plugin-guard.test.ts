@@ -367,6 +367,36 @@ describe('PluginGuard', () => {
     expect(guard.findings().some(f => f.key === 'client:mock-wait' && f.category === 'dependency-missing')).toBe(true)
   })
 
+  it('considerClientConsole never disables system-domain rows: report-only, no reload loop', () => {
+    const home = join(root, 'client-system')
+    // 模板 bundle：在 bundles 里但不在 dependencies 里 → 行可反查到、但属系统域。
+    writeBundle(home, 'sys-bundle', '- insert:\n  - id: sys-row\n    name: sys-module\n')
+    writeManifest(home, ['sys-bundle'], [])
+    const { guard } = makeGuard(home)
+    const r = guard.considerClientConsole('failed to apply loader entry cafef00d (sys-module): Error: locale namespace "x" already has locale "zh"')
+    // 解析得到宿主行但没有一条是用户域：不落行、不算可恢复（reload 必然复现，空转三轮
+    // 没有意义）、只出一条系统级记录。
+    expect(r).toEqual({ relevant: true, acted: false, resolvable: false })
+    expect(existsSync(join(home, 'cordis.patch.yml'))).toBe(false)
+    const finding = guard.findings().find(f => f.key === 'client:sys-module')
+    expect(finding?.id).toBe('sys-row')
+    expect(finding?.reason).toContain('仅记录未自动停用')
+  })
+
+  it('considerClientConsole disables only the user copy when a name spans system and user rows', () => {
+    const home = join(root, 'client-mixed')
+    // 同名两行：模板组合行在前、用户安装行在后（真实形态：用户装了系统件的用户级拷贝）。
+    writeBundle(home, 'sys-bundle', '- insert:\n  - id: sys-row\n    name: shared-market\n')
+    writeBundle(home, 'user-bundle', '- insert:\n  - id: user-row\n    name: shared-market\n')
+    writeManifest(home, ['sys-bundle', 'user-bundle'], ['user-bundle'])
+    const { guard } = makeGuard(home)
+    const r = guard.considerClientConsole('failed to apply loader entry cafef00d (shared-market): Error: locale namespace "x" already has locale "zh"')
+    expect(r).toEqual({ relevant: true, acted: true, resolvable: true })
+    const disabled = disabledEntryIds({ dshHome: home })
+    expect(disabled.has('user-row')).toBe(true) // 停用户拷贝即解除双 apply
+    expect(disabled.has('sys-row')).toBe(false) // 系统组合行绝不动
+  })
+
   // ── preBoot 同名查重（同名不同 id 的重复组合）─────────────────────────────────
   it('preBoot disables later rows of duplicate-name composition at row level, keeping bundles intact', () => {
     const home = join(root, 'dupname')
@@ -484,6 +514,30 @@ describe('PluginGuard', () => {
     const disabledBefore = disabledEntryIds({ dshHome: home2 }).size
     g2.patrol()
     expect(disabledEntryIds({ dshHome: home2 }).size).toBe(disabledBefore) // 窗口清零后不动作
+  })
+
+  // ── patrol 代际门（sidecarState 探针提供时）──────────────────────────────────
+  it('patrol skips and clears its window while the sidecar is outside ready (live-restart boot window)', () => {
+    const home = join(root, 'patrol-generation')
+    writeBundle(home, 'mock-live', '- insert:\n  - id: mock-live\n    name: mock-live\n')
+    writeManifest(home, ['mock-live'], ['mock-live'])
+    const logText = 'dsh: warning: config reload at C:/x/cordis.patch.yml failed: Error: failed to apply loader entry mock-live (mock-live): Error: boom'
+    let sidecarState: string | undefined = 'ready'
+    const guard = new PluginGuard({ dshHome: home, readLog: () => logText, log: () => {}, sidecarState: () => sidecarState })
+    guard.patrolBegin()
+    guard.patrol() // ready 首轮：只记账
+    expect(guard.findings().some(f => f.id === 'mock-live' && f.source === 'runtime')).toBe(true)
+    // 活体重启（ready→restart→spawning）：boot 窗口内巡逻必须整体跳过并清掉确认窗——
+    // 否则上一代首轮的确认残留 + boot 窗口的瞬时失败行会拼出「两轮确认」。
+    sidecarState = 'spawning'
+    guard.patrol()
+    expect(disabledEntryIds({ dshHome: home }).size).toBe(0)
+    // 新一代 ready：确认窗已清，同样的失败重新从两轮走起，本轮不动作。
+    sidecarState = 'ready'
+    guard.patrol()
+    expect(disabledEntryIds({ dshHome: home }).size).toBe(0)
+    guard.patrol() // 新一代次轮确认成立才落行
+    expect(disabledEntryIds({ dshHome: home }).has('mock-live')).toBe(true)
   })
 
   it('onNewFindings fires once per new ledger entry and never throws out of apply', () => {

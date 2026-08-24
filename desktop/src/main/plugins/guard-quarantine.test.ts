@@ -60,6 +60,14 @@ describe('guard-quarantine', () => {
     // 二次写入不覆盖首份备份（预守卫原状是最有价值的恢复锚点）。
     quarantineEntries({ dshHome: h7, ids: ['b'] })
     expect(readFileSync(patch + '.plugin-guard-bak', 'utf8')).toBe(original)
+    // 跨进程同语义：磁盘上已有还原点时（上一会话留的），即使进程内 backedUp 是空的
+    // 也不得用「当前态」（可能已含守卫行、甚至已是错坏态）覆盖首份原状。
+    const patch2 = join(root, 'h7b', 'cordis.patch.yml')
+    mkdirSync(join(root, 'h7b'), { recursive: true })
+    writeFileSync(patch2, '- insert:\n  - id: later-state\n', 'utf8')
+    writeFileSync(patch2 + '.plugin-guard-bak', original, 'utf8')
+    quarantineEntries({ dshHome: join(root, 'h7b'), ids: ['c'] })
+    expect(readFileSync(patch2 + '.plugin-guard-bak', 'utf8')).toBe(original)
   })
 
   it('refuses to write when the home layer does not parse', () => {
@@ -93,7 +101,7 @@ describe('guard-quarantine', () => {
     expect(again.written).toEqual([])
   })
 
-  it('repairCorruptLayers only resets cordis.patch.yml layers, with backup', () => {
+  it('repairCorruptLayers only resets cordis.patch.yml layers, with forensic backup', () => {
     const h4 = join(root, 'h4')
     mkdirSync(h4, { recursive: true })
     const bad = join(h4, 'cordis.patch.yml')
@@ -103,9 +111,23 @@ describe('guard-quarantine', () => {
     const { reset } = repairCorruptLayers({ dshHome: h4, paths: [bad, other] })
     expect(reset).toEqual([bad])
     expect(readFileSync(bad, 'utf8')).toBe('[]\n')
-    expect(existsSync(bad + '.plugin-guard-bak')).toBe(true)
+    // 损坏态取证进独立的 .plugin-guard-corrupt（每次覆盖）；还原点 .plugin-guard-bak
+    // 与取证分名——共用后缀时 repair 一跑还原点就被损坏态覆盖，用户只能恢复出坏文件。
+    expect(readFileSync(bad + '.plugin-guard-corrupt', 'utf8')).toBe('- insert: [ oops')
     expect(readFileSync(other, 'utf8')).toBe('{ nope')
     // 已可解析的层不再动
     expect(repairCorruptLayers({ dshHome: h4, paths: [bad] }).reset).toEqual([])
+  })
+
+  it('repairCorruptLayers never clobbers a pre-existing restore point', () => {
+    const h8 = join(root, 'h8')
+    mkdirSync(h8, { recursive: true })
+    const patch = join(h8, 'cordis.patch.yml')
+    const original = '- insert:\n  - id: user-row\n    name: keep-me\n'
+    writeFileSync(patch + '.plugin-guard-bak', original, 'utf8') // 上一会话的还原点在场
+    writeFileSync(patch, '- insert: [ torn { half-written', 'utf8')
+    expect(repairCorruptLayers({ dshHome: h8, paths: [patch] }).reset).toEqual([patch])
+    expect(readFileSync(patch + '.plugin-guard-bak', 'utf8')).toBe(original) // 还原点原封不动
+    expect(readFileSync(patch + '.plugin-guard-corrupt', 'utf8')).toContain('torn') // 损坏态另存
   })
 })

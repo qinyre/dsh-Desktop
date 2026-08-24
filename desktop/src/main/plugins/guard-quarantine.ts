@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parse, parseDocument, YAMLMap, YAMLSeq } from 'yaml'
+import { patchYamlOptions } from './patch-layers'
 
 /**
  * 插件隔离的落盘动作。只写 $DSH_HOME/cordis.patch.yml（home 层，层叠晚于 profile 用户层，
@@ -11,31 +12,57 @@ import { parse, parseDocument, YAMLMap, YAMLSeq } from 'yaml'
  */
 export const QUARANTINE_MARKER = 'dsh-desktop plugin-guard quarantine'
 
+/**
+ * 还原点（`.plugin-guard-bak`）：预守卫原状，供人工恢复。write-if-missing——进程内
+ * 首写一次、磁盘上已存在即跳过：跨会话不得用「当前态」（可能已含守卫写的行、甚至
+ * 已是错坏态）覆盖首份原状，还原点只认最早的那份。
+ */
 const BACKUP_SUFFIX = '.plugin-guard-bak'
 
-/** 本进程已备份过的目标（首次写入前留预守卫原状；后续写入不再覆盖首份备份）。 */
+/**
+ * 损坏取证（`.plugin-guard-corrupt`）：repairCorruptLayers 重置前的损坏态原文，每次
+ * 覆盖（取证只需要最新一份）。与还原点分名——共用一个后缀时 repair 一跑，还原点就被
+ * 损坏态覆盖，用户从此只能恢复出坏文件。
+ */
+const FORENSIC_SUFFIX = '.plugin-guard-corrupt'
+
+/** 本进程已备份过的目标（进程内去重；跨进程由「磁盘已存在即跳过」兜住）。 */
 const backedUp = new Set<string>()
+
+/** rm+copy 换目标文件：杀毒/索引器瞬时锁（EBUSY/EPERM/EACCES）重试 3×200ms（Windows 实测常见）。 */
+function copyBackupWithRetry(src: string, dst: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rmSync(dst, { force: true })
+      copyFileSync(src, dst)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code
+      if (attempt >= 2 || (code !== 'EBUSY' && code !== 'EPERM' && code !== 'EACCES')) throw error
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    }
+  }
+}
 
 function backupOnce(path: string): void {
   if (backedUp.has(path)) return
   backedUp.add(path)
-  if (!existsSync(path)) return // 首写创建的层没有预守卫原状可备
   const bak = path + BACKUP_SUFFIX
-  rmSync(bak, { force: true })
-  copyFileSync(path, bak)
+  if (existsSync(bak)) return // 已有还原点（上一会话留的）不覆盖
+  if (!existsSync(path)) return // 首写创建的层没有预守卫原状可备
+  copyBackupWithRetry(path, bak)
 }
 
-/** 损坏修复专用：每次都覆盖备份（取证语义——捕获本次被重置前的损坏态原文）。 */
+/** 损坏修复专用：每次都覆盖取证（捕获本次被重置前的损坏态原文）。 */
 function backupAlways(path: string): void {
-  const bak = path + BACKUP_SUFFIX
-  rmSync(bak, { force: true })
-  copyFileSync(path, bak)
+  if (!existsSync(path)) return
+  copyBackupWithRetry(path, path + FORENSIC_SUFFIX)
 }
 
 /** 打开（或初始化）一个用户 patch 层的文档树；无法解析时 throw——绝不落盘可能写坏的层。 */
 function patchLayerDoc(path: string): { doc: ReturnType<typeof parseDocument>; seq: YAMLSeq; path: string } {
   const content = existsSync(path) ? readFileSync(path, 'utf8') : ''
-  const doc = parseDocument(content)
+  const doc = parseDocument(content, patchYamlOptions)
   if (doc.errors.length > 0) {
     throw new Error(`patch layer does not parse: ${path}: ${doc.errors[0]?.message ?? String(doc.errors[0])}`)
   }
@@ -50,7 +77,7 @@ function patchLayerDoc(path: string): { doc: ReturnType<typeof parseDocument>; s
 function renderAndWrite(doc: ReturnType<typeof parseDocument>, seq: YAMLSeq, path: string): void {
   setBlockStyle(seq)
   const next = doc.toString({ lineWidth: 0 })
-  parse(next) // 写前自检：live watcher 与下次启动都对此文件 fail loud
+  parse(next, patchYamlOptions) // 写前自检：live watcher 与下次启动都对此文件 fail loud
   // 就地覆盖写与 dsh 侧 MCP/安装器写行存在丢失更新窗口（无锁、chokidar 要求就地写），
   // 备份首份原状供人工恢复——备份≠并发安全，窗口内并发写仍可能互相覆盖。
   backupOnce(path)
@@ -172,7 +199,7 @@ export function repairCorruptLayers(opts: { dshHome: string; paths: readonly str
   const reset: string[] = []
   for (const path of opts.paths) {
     if (basename(path) !== 'cordis.patch.yml' || !existsSync(path)) continue
-    const doc = parseDocument(readFileSync(path, 'utf8'))
+    const doc = parseDocument(readFileSync(path, 'utf8'), patchYamlOptions)
     const parseable = doc.errors.length === 0 && (doc.contents === null || doc.contents instanceof YAMLSeq)
     if (parseable) continue
     backupAlways(path)
@@ -267,7 +294,7 @@ export function disabledEntryIds(opts: { dshHome: string }): Set<string> {
     if (!existsSync(path)) continue
     let list: unknown
     try {
-      list = parse(readFileSync(path, 'utf8'))
+      list = parse(readFileSync(path, 'utf8'), patchYamlOptions)
     } catch {
       continue
     }

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseDocument, YAMLMap, YAMLSeq } from 'yaml'
+import { patchYamlOptions } from './patch-layers'
 import type { MenuItemConstructorOptions } from 'electron'
 import { bundleNameOfRowSource, isBundleRow, readLayerTable, userDomainRowIds, type LayerTable } from './patch-layers'
 import { disabledEntryIds, disableEntries, enableAllEntries, enableEntries, QUARANTINE_MARKER, restoreBundles } from './guard-quarantine'
@@ -97,7 +98,7 @@ function scanDisableAttributions(dshHome: string): Map<string, DisableSource> {
     if (!existsSync(path)) continue
     let seq: YAMLSeq | undefined
     try {
-      const doc = parseDocument(readFileSync(path, 'utf8'))
+      const doc = parseDocument(readFileSync(path, 'utf8'), patchYamlOptions) // 宿主 !!js 方言：注册后不告警不依赖降级
       if (doc.errors.length > 0 || (doc.contents !== null && !(doc.contents instanceof YAMLSeq))) continue
       seq = doc.contents instanceof YAMLSeq ? doc.contents : undefined
     } catch {

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { parse } from 'yaml'
+import type { ScalarTag } from 'yaml'
 
 /** patch 层里的一条 insert 行（entry 声明）。source = 所在 patch 文件的绝对路径。 */
 export interface PatchRow {
@@ -37,6 +38,22 @@ interface PatchItem {
 }
 
 /**
+ * 宿主 patch 方言的 `!!js` 表达式标量（js-yaml `JSON_SCHEMA.extend(JsExpr)`，tag 为
+ * tag:yaml.org,2002:js——cordis-plugin-include src/index.ts）。守卫只消费行的
+ * id/name/disabled，表达式解析为原文即可，不实现宿主 loader 的求值语义。不注册时
+ * `yaml` 包走「告警 + 降级裸字符串」的兜底（恰好可用），但每次 parse 都向主进程打
+ * YAMLWarning（巡检 30s 一轮、日志层多文件，纯噪音），且行为无契约保护——yaml 包若
+ * 改为 throw（未解析 tag 严格化）则隔离/安全模式/重启用全部静默失效。
+ */
+const jsExprScalar: ScalarTag = {
+  tag: 'tag:yaml.org,2002:js',
+  resolve(value) { return value },
+}
+
+/** patch 层文件统一的解析选项（守卫读写两侧共用，保证方言一致）。 */
+export const patchYamlOptions: { customTags: ScalarTag[] } = { customTags: [jsExprScalar] }
+
+/**
  * 解析一个 patch 层。返回：items = 正常；null = 文件不存在；undefined = 存在但无法解析
  * （YAML 语法错或根不是数组——与 harness parsePatchList 的 fail-loud 判定一致）。
  */
@@ -49,7 +66,7 @@ function readPatchLayer(path: string): PatchItem[] | null | undefined {
     return undefined
   }
   try {
-    const parsed = parse(text) as unknown
+    const parsed = parse(text, patchYamlOptions) as unknown
     if (!Array.isArray(parsed)) return undefined
     return parsed as PatchItem[]
   } catch {

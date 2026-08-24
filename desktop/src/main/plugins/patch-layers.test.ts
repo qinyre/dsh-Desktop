@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { bundleNameOfRowSource, declaredEntryMissing, findDuplicateEntryIds, isBundleRow, readLayerTable } from './patch-layers'
+import { disabledEntryIds, quarantineEntries } from './guard-quarantine'
 
 describe('readLayerTable', () => {
   const root = mkdtempSync(join(tmpdir(), 'patch-layers-'))
@@ -39,6 +40,43 @@ describe('readLayerTable', () => {
     expect(table.tracked).toEqual(['p-a', 'p-b'])
     expect(table.corruptLayers).toEqual([])
     expect(table.missingBundles).toEqual([])
+  })
+
+  it('accepts the host patch dialect: !!js expression rows are neither corrupt nor data-loss on write-back', () => {
+    // 宿主 loader 的 patch 层合法支持 !!js 表达式（js-yaml JSON_SCHEMA.extend(JsExpr)，
+    // dsh-bundle-base 自身就在用）。守卫读侧不得把它判成 corruptLayers（否则预检会把
+    // 合法 bundle 移出启动清单），写侧往返不得丢 !!js 标记（否则隔离写行会静默毁掉
+    // 用户层里的配置表达式）。
+    const home = join(root, 'js-expr')
+    writeBundle(home, 'p-js', [
+      '- id: e-js',
+      '  name: p-js',
+      '  config:',
+      "    root: !!js dshHomePath('sessions')",
+      "    mode: !!js process.env.DSH_TELEMETRY_MODE || 'DISABLED'",
+      '- insert:',
+      '  - id: e-js-two',
+      '    name: p-js-two',
+    ].join('\n') + '\n')
+    writeManifest(home, ['p-js'], ['p-js'])
+    writeFileSync(join(home, 'cordis.patch.yml'), [
+      '- insert:',
+      '  - id: e-home-js',
+      '    name: home-js-module',
+      '    config:',
+      '      root: !!js process.cwd()',
+    ].join('\n') + '\n')
+    const table = readLayerTable({ dshHome: home })
+    expect(table.corruptLayers).toEqual([])
+    // 裸行是 config 覆盖（不产出 PatchRow），insert 行才进 rows——!!js 的意义在于整层
+    // 可解析：不进 corruptLayers、insert 行照常提取。
+    expect(table.rows.map(r => r.id)).toEqual(['e-js-two', 'e-home-js'])
+    // 写侧往返：往同一层追加隔离行后，!!js 表达式必须原样保留。
+    quarantineEntries({ dshHome: home, ids: ['e-home-js'] })
+    const after = readFileSync(join(home, 'cordis.patch.yml'), 'utf8')
+    expect(after).toContain('root: !!js process.cwd()')
+    expect(after).toContain('dsh-desktop plugin-guard quarantine')
+    expect(disabledEntryIds({ dshHome: home }).has('e-home-js')).toBe(true)
   })
 
   it('tracks only bundles that are also dependencies', () => {
