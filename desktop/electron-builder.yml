@@ -34,12 +34,13 @@ publish:
   owner: qinyre
   repo: dsh-Desktop
 # Linux（AppImage + deb）：AppImage 是唯一支持 electron-updater 自动更新的 Linux 目标
-# （latest-linux.yml + blockmap 资产随 Release 手动上传）；deb 走手动升级——运行时对
-# 无 APPIMAGE env 的 Linux 已禁用更新检查（index.ts），不会弹假「已是最新」。
-# 静态 AppImage runtime（1.0.3）：免系统 libfuse2（Ubuntu 22.04+/Debian 12 默认不带），
-# desktop entry 也不再预烘焙 --no-sandbox——AppRun 会在受限环境（如 Ubuntu 24.04 的
-# AppArmor userns 限制）运行时探测并自动降级无沙箱。注意：Linux 目标只能在 Linux/WSL
-# 上构建（appimage/fpm 工具链没有 Windows host 支持），发布流程见 README。
+# （latest-linux.yml 资产随 Release 手动上传，差分 blockmap 内嵌在 AppImage 内）；deb 走
+# 手动升级——运行时对无 APPIMAGE env 的 Linux 已禁用更新检查（index.ts），不会弹假
+# 「已是最新」。静态 AppImage runtime（1.0.3）：免系统 libfuse2（Ubuntu 22.04+/Debian 12
+# 默认不带），desktop entry 也不再预烘焙 --no-sandbox——AppRun 会在受限环境（如
+# Ubuntu 24.04 的 AppArmor userns 限制）运行时探测并自动降级无沙箱。注意：Linux 目标
+# 只能在 Linux/WSL 上构建（appimage/fpm 工具链没有 Windows host 支持），发布流程见
+# README。
 toolsets:
   appimage: "1.0.3"
 linux:

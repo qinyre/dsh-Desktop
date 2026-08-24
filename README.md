@@ -156,7 +156,7 @@ pnpm run dist:signed    # 构建 + 签名 + 验签（凭据环境变量见 docs/
 
 dev 模式默认从 `../deepseek-harness` 解析上游仓（可用 `DESKTOP_DSH_REPO` 覆盖）；`DESKTOP_DSH_MODE=npm` 切换到捆绑的 npm 包。冒烟在前置条件缺失时自动跳过。
 
-发布 Linux 版时，在 WSL/Linux 环境跑 `pnpm run dist:linux`，把产出的四个文件随同一个 GitHub Release 手动上传：`DSH-Desktop-x.x.x.AppImage`、`DSH-Desktop-x.x.x.AppImage.blockmap`、`DSH-Desktop-x.x.x.deb`、`latest-linux.yml`。AppImage 的应用内更新依赖后两者（差分下载），漏传等于断供 Linux 自动更新；latest-linux.yml 里的 url 与资产名逐字一致，上传时不要改名。
+发布 Linux 版时，在 WSL/Linux 环境跑 `pnpm run dist:linux`，把产出的三个文件随同一个 GitHub Release 手动上传：`DSH-Desktop-x.x.x.AppImage`、`DSH-Desktop-x.x.x.deb`、`latest-linux.yml`（差分下载所需的 blockmap 已内嵌在 AppImage 里，没有独立文件）。AppImage 的应用内更新依赖 latest-linux.yml，漏传等于断供 Linux 自动更新；其中的 url 与资产名逐字一致，上传时不要改名。
 
 ### 已知补丁
 
