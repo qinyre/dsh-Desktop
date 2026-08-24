@@ -97,6 +97,8 @@ Some crashes leave no diagnostic trace — for example, a plugin terminating the
 
 Everything above assumes the in-app interface is eventually reachable — yet the plugin page itself is a plugin, and when the failure is bad enough that the page never loads, it is of no help. The tray menu therefore carries an independent "Plugins" section that works without the service and without any page: it lists all installed plugins with their enabled state (noting whether each was disabled by the guard, from the in-app page, or by hand), disables or re-enables them one by one, enters safe mode on demand, and brings everything back in one click. Every change is followed by an automatic service restart so it takes effect deterministically; rapid consecutive actions merge into one restart. Damaged packages the guard removed from the launch list appear here too and can be readmitted after a confirmation, with a restart to verify — if they really are broken, the guard removes them again.
 
+![The tray's "Plugins" submenu](docs/images/screenshot-tray.png)
+
 The guard remains active after launch: plugin health is checked periodically, plugins that fail at runtime are disabled and recorded immediately, and plugins left waiting indefinitely for a service that never arrives are also recorded, to appear in the next quarantine report. A plugin that fails to mount while the service keeps running — the failure lands only in the log — is caught by a periodic log patrol and announced with a tray notification.
 
 ## Troubleshooting & feedback
