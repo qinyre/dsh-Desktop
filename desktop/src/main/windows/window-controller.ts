@@ -1,5 +1,6 @@
 import { BrowserWindow, screen, shell } from 'electron'
 import type { Rectangle } from 'electron'
+import { join } from 'node:path'
 import type { SidecarState } from '../sidecar/sidecar-manager'
 import { isAllowedNavigation, isSafeExternalUrl } from './navigation-guard'
 import { applyTitleBarColor, parseCssColor } from './titlebar-color'
@@ -59,6 +60,9 @@ export class WindowController {
     this.win = new BrowserWindow({
       ...this.clampToVisibleDisplay(this.store.load()), minWidth: 800, minHeight: 600, show: false,
       title: 'DSH Desktop',
+      // Linux 的窗口/任务栏图标不跟随可执行文件（Windows 从 exe 取）：不显式传会退化成
+      // Electron 默认图。win32 保持不传，任务栏沿用安装器图标，零变化。
+      icon: process.platform === 'win32' ? undefined : join(__dirname, '../../resources/icon.png'),
       webPreferences: { preload: this.opts.preloadPath, contextIsolation: true },
     })
     this.win.once('ready-to-show', () => this.win?.show())

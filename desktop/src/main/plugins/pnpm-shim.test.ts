@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -22,6 +22,12 @@ describe('ensurePnpmShim（设计书 §7：运行时生成，ELECTRON_RUN_AS_NOD
     const content = readFileSync(join(shimDir, 'pnpm'), 'utf8')
     expect(content.startsWith('#!/bin/sh')).toBe(true)
     expect(content).toContain('ELECTRON_RUN_AS_NODE=1')
+  })
+  // NTFS 上 chmod 近似 no-op（stat mode 恒 0o666），执行位只能真 Linux 上断言。
+  it.skipIf(process.platform !== 'linux')('makes the posix shim executable (0755) on real linux filesystems', async () => {
+    const shimDir = join(dir, 'posix-mode')
+    await ensurePnpmShim({ execPath: '/app/dsh-desktop', shimDir, resolvePnpmCli: () => '/app/pnpm.cjs' })
+    expect(statSync(join(shimDir, 'pnpm')).mode & 0o777).toBe(0o755)
   })
 })
 

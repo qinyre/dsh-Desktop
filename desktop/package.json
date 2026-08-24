@@ -7,6 +7,7 @@
   "author": "DSH Desktop Project",
   "main": "out/main/index.js",
   "packageManager": "pnpm@11.21.0",
+  "desktopName": "dsh-desktop",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -20,6 +21,8 @@
     "smoke:hideconsole": "electron scripts/spawn-windowhide-smoke.cjs",
     "dist": "electron-vite build && electron-builder --win nsis --publish never",
     "dist:signed": "node scripts/check-signing-env.mjs && electron-vite build && electron-builder --win nsis --config electron-builder.signed.mjs && node scripts/verify-signature.mjs",
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never",
+    "dist:dir:linux": "electron-vite build && electron-builder --linux dir --publish never",
     "icons": "node scripts/make-icons.mjs",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "smoke:tray": "vitest run -t \"tray plugin manager smoke\""

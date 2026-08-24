@@ -1,6 +1,7 @@
 # 打包产物自检：真实构建 NSIS 安装器并跑 verify:bundle（依赖闭包 + 隔离路径启动）。
 # 打包链路重（下载 Electron 发行包 + NSIS 压缩），不随每次 push 跑——手动触发、
 # 版本标签、每周一巡检三口入。日常防线（类型/单测/补丁冒烟）见 ci.yml。
+# Linux job 同款：AppImage + deb 全量构建与产物自检（Linux 目标只能在 Linux host 构建）。
 name: pack-verify
 
 on:
@@ -31,5 +32,34 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build installer
         run: pnpm run dist
+      - name: Verify bundle
+        run: pnpm run verify:bundle
+
+  pack-verify-linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - name: Electron/electron-builder cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: linux-electron-${{ hashFiles('desktop/pnpm-lock.yaml') }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build linux packages
+        run: pnpm run dist:linux
       - name: Verify bundle
         run: pnpm run verify:bundle

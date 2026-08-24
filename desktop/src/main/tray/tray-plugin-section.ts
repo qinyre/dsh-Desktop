@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from 'node:fs'
+import { join } from 'node:path'
 import { dialog } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { buildPluginSection, disableAllPlugins, enableAllPlugins, listManagedPlugins, restoreBundle, setPluginEnabled } from '../plugins/tray-plugin-manager'
@@ -23,15 +24,24 @@ export interface TrayPluginSectionOpts {
   log: (line: string) => void
 }
 
-/** 状态文件（相对 dshHome，POSIX 斜杠形态）；basename 过滤会误吞 node_modules 下同名文件。 */
+/** win32 递归 watch 的全路径匹配表（相对 dshHome，POSIX 斜杠形态）。 */
 const WATCHED_REL_PATHS = new Set(['cordis.patch.yml', 'profiles/web/cordis.patch.yml', 'profiles/web/package.json'])
+/**
+ * 其余平台的浅层 watch 目标（inotify 递归模拟要给子树每个目录建 watch，pnpm 的
+ * node_modules 大树会撞 max_user_watches 上限，且 sessions 高频写入全走回调）：三个
+ * 状态文件都是 dshHome 或 profiles/web 的直接子文件，两级浅表 + basename 过滤即等价。
+ */
+const SHALLOW_WATCH_TARGETS: { relDir: string; basenames: Set<string> }[] = [
+  { relDir: '', basenames: new Set(['cordis.patch.yml']) },
+  { relDir: 'profiles/web', basenames: new Set(['cordis.patch.yml', 'package.json']) },
+]
 
 const REFRESH_DEBOUNCE_MS = 500
 const RESTART_DEBOUNCE_MS = 1_500
 const WATCH_RETRY_MAX_MS = 30_000
 
 export class TrayPluginSection {
-  private watcher: FSWatcher | undefined
+  private watchers = new Map<string, FSWatcher>()
   private watchBackoffMs = 1_000
   private watchRetryTimer: NodeJS.Timeout | undefined
   private refreshTimer: NodeJS.Timeout | undefined
@@ -65,38 +75,68 @@ export class TrayPluginSection {
     if (this.watchRetryTimer !== undefined) clearTimeout(this.watchRetryTimer)
     if (this.refreshTimer !== undefined) clearTimeout(this.refreshTimer)
     if (this.restartTimer !== undefined) clearTimeout(this.restartTimer)
-    this.watcher?.close()
-    this.watcher = undefined
+    for (const watcher of this.watchers.values()) watcher.close()
+    this.watchers.clear()
   }
 
   /**
    * 懒挂载 + 自愈：dshHome（首启）或 profiles/web 可能尚不存在，直接 watch 会 ENOENT；
-   * 被监视目录被删/出错时 watcher 报错即死。失败走退避重试，refresh() 顺带补挂兜底。
+   * 被监视目录被删/出错时 watcher 报错即死。失败走退避重试（按目录独立补挂），
+   * refresh() 顺带补挂兜底。win32 一个递归句柄覆盖全树；其余平台浅层两级。
    */
   private attachWatch(): void {
-    if (this.disposed || this.watcher !== undefined) return
-    try {
-      const watcher = watch(this.opts.dshHome, { recursive: true }, (_event, filename) => {
-        const rel = filename === undefined ? '' : String(filename).split('\\').join('/')
-        if (WATCHED_REL_PATHS.has(rel)) this.scheduleRefresh()
-      })
-      watcher.on('error', (error) => {
-        this.opts.log(`[dsh-desktop] tray plugin watch error: ${String(error)}`)
-        watcher.close()
-        if (this.watcher === watcher) this.watcher = undefined
-        this.scheduleRefresh()
+    if (this.disposed) return
+    if (process.platform === 'win32') {
+      const dir = this.opts.dshHome
+      if (this.watchers.has(dir)) return
+      try {
+        const watcher = watch(dir, { recursive: true }, (_event, filename) => {
+          const rel = filename === undefined ? '' : String(filename).split('\\').join('/')
+          if (WATCHED_REL_PATHS.has(rel)) this.scheduleRefresh()
+        })
+        this.adoptWatcher(dir, watcher)
+      } catch (error) {
+        this.opts.log(`[dsh-desktop] tray plugin watch attach failed: ${String(error)}`)
         this.scheduleWatchRetry()
-      })
-      this.watcher = watcher
-      this.watchBackoffMs = 1_000
-    } catch (error) {
-      this.opts.log(`[dsh-desktop] tray plugin watch attach failed: ${String(error)}`)
-      this.scheduleWatchRetry()
+      }
+      return
+    }
+    for (const target of SHALLOW_WATCH_TARGETS) {
+      const dir = target.relDir === '' ? this.opts.dshHome : join(this.opts.dshHome, ...target.relDir.split('/'))
+      if (this.watchers.has(dir)) continue
+      try {
+        const watcher = watch(dir, (_event, filename) => {
+          const base = String(filename ?? '').split('\\').join('/').split('/').pop()
+          if (base !== undefined && target.basenames.has(base)) this.scheduleRefresh()
+        })
+        this.adoptWatcher(dir, watcher)
+      } catch (error) {
+        this.opts.log(`[dsh-desktop] tray plugin watch attach failed (${dir}): ${String(error)}`)
+        this.scheduleWatchRetry()
+      }
     }
   }
 
+  private adoptWatcher(dir: string, watcher: FSWatcher): void {
+    watcher.on('error', (error) => {
+      this.opts.log(`[dsh-desktop] tray plugin watch error (${dir}): ${String(error)}`)
+      watcher.close()
+      if (this.watchers.get(dir) === watcher) this.watchers.delete(dir)
+      this.scheduleRefresh()
+      this.scheduleWatchRetry()
+    })
+    this.watchers.set(dir, watcher)
+    this.watchBackoffMs = 1_000
+  }
+
+  private watchComplete(): boolean {
+    if (process.platform === 'win32') return this.watchers.has(this.opts.dshHome)
+    return SHALLOW_WATCH_TARGETS.every((target) =>
+      this.watchers.has(target.relDir === '' ? this.opts.dshHome : join(this.opts.dshHome, ...target.relDir.split('/'))))
+  }
+
   private scheduleWatchRetry(): void {
-    if (this.disposed || this.watcher !== undefined || this.watchRetryTimer !== undefined) return
+    if (this.disposed || this.watchComplete() || this.watchRetryTimer !== undefined) return
     const delay = this.watchBackoffMs
     this.watchBackoffMs = Math.min(this.watchBackoffMs * 2, WATCH_RETRY_MAX_MS)
     this.watchRetryTimer = setTimeout(() => {

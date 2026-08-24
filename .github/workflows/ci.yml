@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-  pull_request:
+    pull_request:
 
 jobs:
   desktop:
@@ -38,3 +38,45 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+
+  desktop-linux:
+    # Linux 侧防线：install 期的平台二进制解析（koffi/sharp linux 变体 + 5 个补丁应用）、
+    # 单测里的 POSIX 分支（killSidecar 信号序列、pnpm sh shim、PATH 分隔符），外加一次
+    # --dir 快速打包（linux-unpacked 布局 + verify-bundle 的 linux 分支演练）。
+    # check:electron 在无头 runner 上需 ELECTRON_RUN_AS_NODE（裸跑 Electron 会在 GTK
+    # 初始化挂起；脚本读的是内置 Node 版本，RUN_AS_NODE 下读数相同）。
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - name: Electron/electron-builder cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: linux-electron-${{ hashFiles('desktop/pnpm-lock.yaml') }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Electron Node version check
+        run: npm run check:electron
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Fast linux dir package
+        run: pnpm run dist:dir:linux
+      - name: Verify bundle
+        run: pnpm run verify:bundle

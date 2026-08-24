@@ -3,7 +3,9 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { app, dialog, ipcMain, Menu, shell } from 'electron'
 import { buildSidecarEnv, resolveAppPaths } from './app-paths'
+import { probeDbusName } from './dbus-probe'
 import { EventTap } from './events/event-tap'
+import { installQuitGrace } from './quit-grace'
 import { PluginGuard } from './plugins/plugin-guard'
 import { showGuardReport } from './plugins/guard-report'
 import { PluginRuntimeMonitor } from './plugins/guard-runtime'
@@ -98,11 +100,19 @@ if (!gotLock) {
     // sidecar.restart 保持监督）。
     // dev 下 __dirname=out/main，../../resources 解析到 desktop/resources/icon.png。
     // updater 声明在托盘之前：「检查更新」菜单项回调引用它，而构造在下方 isPackaged 分支。
+    // Linux 桌面能力探测（一次，win32 恒真跳过）：托盘依赖 StatusNotifierItem 宿主——
+    // new Tray() 在无宿主时静默成功（图标不显示、不抛错），try/catch 检测不了，只能问
+    // DBus；通知同理依赖 org.freedesktop.Notifications 守护（缺席时 Electron Notification
+    // 有抛错/挂起的已知问题）。探测未知按缺席处理（fail-closed：误判「无」只损失隐藏
+    // 便利，误判「有」会把窗口藏丢）。
+    const trayAvailable = process.platform === 'win32' || await probeDbusName('org.kde.StatusNotifierWatcher') === true
+    const notificationsAvailable = process.platform === 'win32' || await probeDbusName('org.freedesktop.Notifications') === true
     let trayPlugins: TrayPluginSection | undefined
     let updater: UpdaterController | undefined
     const tray = new TrayController({
       iconPath: join(__dirname, '../../resources/icon.png'),
       logDir: paths.logDir,
+      notificationsAvailable,
       onShow: () => { windows?.focus() },
       onRestart: () => { void sidecar?.restart() },
       onCheckUpdates: () => { void updater?.checkNow() },
@@ -124,7 +134,7 @@ if (!gotLock) {
       },
       onQuit: () => { app.quit() },
     })
-    if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow)
+    if (windows.mainWindow !== undefined) tray.attach(windows.mainWindow, trayAvailable)
     // 托盘插件管理分区：watcher 首挂此刻大概率 ENOENT（profiles/web 由下方审计/预装创建），
     // 懒挂载+退避重试自行消化；guard/sidecar 均 let 先引用后赋值，点击时已就位。
     if (paths.dshHome !== undefined) {
@@ -382,15 +392,18 @@ if (!gotLock) {
     // 通知水龙头（设计书 §6）：挂在 sidecar 生命周期上，ready 才连双下行 WS。
     // 闭包里 windows（let）不可窄化，取 mainWindow 需 ?.；whenReady 只 resolve 一次，
     // before-quit 监听不会重复注册（与下方 sidecar 的 before-quit 互不影响）。
-    const eventTap = new EventTap({ getMainWindow: () => windows?.mainWindow })
+    const eventTap = new EventTap({ getMainWindow: () => windows?.mainWindow, canNotify: () => notificationsAvailable })
     eventTap.attach(sidecar)
     app.on('before-quit', () => { eventTap.close(); runtimeMonitor?.stop(); trayPlugins?.dispose() })
 
     // 自动更新（设计书 §8）：默认检查本仓库的 GitHub Releases（v0.1.0 起资产带 latest.yml），
     // DSH_DESKTOP_FEED_URL 可覆盖为任意 generic feed（本地测试/未来迁移）；仅打包启用。
+    // deb/解包安装（无 APPIMAGE env）下 electron-updater 无法自装（AppImage 专属），假
+    // 「已是最新」纯噪音——不启用检查；显式 feed 覆盖保留（调试通道优先）。
     if (app.isPackaged) {
+      const feedDisabled = process.platform === 'linux' && process.env.APPIMAGE === undefined && process.env.DSH_DESKTOP_FEED_URL === undefined
       updater = new UpdaterController({
-        feed: process.env.DSH_DESKTOP_FEED_URL ?? { provider: 'github', owner: 'qinyre', repo: 'dsh-Desktop' },
+        feed: feedDisabled ? undefined : process.env.DSH_DESKTOP_FEED_URL ?? { provider: 'github', owner: 'qinyre', repo: 'dsh-Desktop' },
         dshHome: paths.dshHome ?? '',
         backupRoot: join(paths.userDataDir, 'backups'),
       })
@@ -399,7 +412,8 @@ if (!gotLock) {
 
     sidecar.start()
   })
-  // before-quit 同步生命周期里 `void stop()` 即可——Windows 硬杀即时完成；POSIX 分支的
-  // 2s 宽限由 killSidecar 内部处理，Electron 退出不等 promise 是可接受的已知取舍（设计书 §4）。
-  app.on('before-quit', () => { void sidecar?.stop() })
+  // 退出宽限：killSidecar 的 POSIX 分支是 SIGTERM→2s→SIGKILL，旧的 fire-and-forget 不等
+  // 宽限兑现，主进程先走会留孤儿 sidecar。will-quit 拦截等待 stop()（3s 封顶）后经
+  // app.exit 收尾；win32 硬杀即时完成，等待只是保险。quitAndInstall 兼容性见 quit-grace.ts。
+  installQuitGrace(app, { stop: () => sidecar?.stop(), exit: (code) => { app.exit(code) } })
 }

@@ -31,7 +31,7 @@ export class EventTap {
   private closed = false
   private reconnectTimer: NodeJS.Timeout | undefined
 
-  constructor(private readonly opts: { getMainWindow(): BrowserWindow | undefined }) {}
+  constructor(private readonly opts: { getMainWindow(): BrowserWindow | undefined; canNotify?: () => boolean }) {}
 
   // 参数保持结构化（不依赖 SidecarManager 类）：on 的形状镜像 manager 的泛型签名，
   // 非泛型重载形式与 `<K extends keyof SidecarEvents>` 的实现做结构兼容时推不出 K。
@@ -114,9 +114,23 @@ export class EventTap {
     }
     const win = this.opts.getMainWindow()
     if (!shouldNotify(win?.isVisible() ?? false, win?.isFocused() ?? false)) return
-    const notification = new Notification({ title, body: '点击返回 DSH Desktop' })
-    notification.on('click', () => this.opts.getMainWindow()?.focus())
-    notification.show()
+    this.showDesktopNotification(title, '点击返回 DSH Desktop')
+  }
+
+  /**
+   * 桌面通知的统一出口：canNotify 前置门控（Linux 无通知守护时 Notification 有已知的
+   * 抛错/挂起问题 electron#21912，探测未确认就不创建）+ 构造与 show 整段包裹——两者
+   * 都可能因环境缺席而抛错，这是纯增强路径，吞掉不影响任何下游逻辑。
+   */
+  private showDesktopNotification(title: string, body: string): void {
+    if (this.opts.canNotify !== undefined && !this.opts.canNotify()) return
+    try {
+      const notification = new Notification({ title, body })
+      notification.on('click', () => this.opts.getMainWindow()?.focus())
+      notification.show()
+    } catch {
+      /* 通知守护缺席等：静默 */
+    }
   }
 
   /** 缓存 mux 广播的会话标题投影（key==='title'，string|null；null=清除）。 */
@@ -138,12 +152,7 @@ export class EventTap {
     if (!this.cooldown.allow(sessionId)) return
     const title = this.titles.get(sessionId) ?? '回合完成'
     const reply = await this.fetchLastReply(sessionId)
-    const notification = new Notification({
-      title,
-      body: reply !== undefined ? summarizeReply(reply) : '点击返回 DSH Desktop',
-    })
-    notification.on('click', () => this.opts.getMainWindow()?.focus())
-    notification.show()
+    this.showDesktopNotification(title, reply !== undefined ? summarizeReply(reply) : '点击返回 DSH Desktop')
   }
 
   /** 边沿瞬间末条消息可能尚未投影完：为空时短延迟重试一次。 */

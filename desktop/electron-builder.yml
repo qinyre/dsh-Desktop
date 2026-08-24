@@ -33,3 +33,23 @@ publish:
   provider: github
   owner: qinyre
   repo: dsh-Desktop
+# Linux（AppImage + deb）：AppImage 是唯一支持 electron-updater 自动更新的 Linux 目标
+# （latest-linux.yml + blockmap 资产随 Release 手动上传）；deb 走手动升级——运行时对
+# 无 APPIMAGE env 的 Linux 已禁用更新检查（index.ts），不会弹假「已是最新」。
+# 静态 AppImage runtime（1.0.3）：免系统 libfuse2（Ubuntu 22.04+/Debian 12 默认不带），
+# desktop entry 也不再预烘焙 --no-sandbox——AppRun 会在受限环境（如 Ubuntu 24.04 的
+# AppArmor userns 限制）运行时探测并自动降级无沙箱。注意：Linux 目标只能在 Linux/WSL
+# 上构建（appimage/fpm 工具链没有 Windows host 支持），发布流程见 README。
+toolsets:
+  appimage: "1.0.3"
+linux:
+  target: [AppImage, deb]
+  icon: build/icon.png
+  category: Utility
+  # 默认 executableName 会从 productName 推出 "dsh desktop"（含空格）——/usr/bin 符号
+  # 链接、hicolor 图标文件名、desktop entry 的 Icon= 与 verify-bundle 的可执行名四处
+  # 同源，不可删。
+  executableName: dsh-desktop
+  syncDesktopName: true
+  # GitHub 会把资产文件名里的空格替换成点号：延续 Windows 侧的无空格命名契约。
+  artifactName: DSH-Desktop-${version}.${ext}

@@ -1,11 +1,16 @@
-import { BrowserWindow, Menu, Tray, app, shell } from 'electron'
+import { BrowserWindow, Menu, Notification, Tray, app, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { closeAction } from './close-behavior'
+import { resolveNotifyChannel } from './notify-channel'
 
 /**
  * 托盘（设计书 §5）：显示 / 插件管理 / 重启服务 / 检查更新 / 打开日志目录 / 退出。
  * 插件管理是架构级逃生通道（页面打不开时唯一可用的管理入口），分区由 tray-plugin-section
  * 每次现读磁盘构建；外部写入经 fs.watch 触发 refresh() 重建菜单。
+ *
+ * Linux：无 StatusNotifierItem 宿主时 new Tray() 静默成功（图标不显示、不抛错），容错
+ * 不能靠 try/catch——由调用方经 DBus 探测传入 trayAvailable；close handler 无论托盘
+ * 是否创建成功都必须注册（无托盘时 closeAction 退化为真实退出，依赖的就是它）。
  */
 export class TrayController {
   private tray: Tray | undefined
@@ -15,6 +20,8 @@ export class TrayController {
   constructor(private readonly opts: {
     iconPath: string
     logDir: string
+    /** Linux 通知守护（org.freedesktop.Notifications）探测结果；win32 恒 true（走气球）。 */
+    notificationsAvailable: boolean
     onShow(): void
     onRestart(): void
     onCheckUpdates(): void
@@ -24,16 +31,23 @@ export class TrayController {
     pluginSection?: () => MenuItemConstructorOptions | undefined
   }) {}
 
-  attach(win: BrowserWindow): void {
-    this.tray = new Tray(this.opts.iconPath)
-    this.tray.setToolTip('DSH Desktop')
-    this.tray.setContextMenu(this.buildMenu())
-    this.tray.on('double-click', () => this.opts.onShow())
+  attach(win: BrowserWindow, trayAvailable: boolean): void {
+    // try 只包托盘本体：构造失败（如无 DISPLAY）不得连坐丢掉 close handler 与 before-quit
+    // 的 quiting 置位——它们正是无托盘回退路径（close→quit）的必需件。
+    try {
+      this.tray = new Tray(this.opts.iconPath)
+      this.tray.setToolTip('DSH Desktop')
+      this.tray.setContextMenu(this.buildMenu())
+      this.tray.on('double-click', () => this.opts.onShow())
+    } catch (error) {
+      this.tray = undefined
+      console.warn(`[dsh-desktop] tray unavailable: ${String(error)}`)
+    }
     win.on('close', (event) => {
-      if (closeAction({ quiting: this.quiting }) === 'hide') {
+      if (closeAction({ quiting: this.quiting, trayAvailable }) === 'hide') {
         event.preventDefault()
         win.hide()
-        if (!this.trayShownOnce()) { this.tray?.displayBalloon({ title: 'DSH Desktop', content: '已最小化到托盘' }) }
+        if (!this.trayShownOnce()) { this.notify('DSH Desktop', '已最小化到托盘') }
         this.trayHintShown = true
       }
     })
@@ -70,14 +84,22 @@ export class TrayController {
   private trayShownOnce(): boolean { return this.trayHintShown }
 
   /**
-   * 托盘气泡通知（运行期新隔离等；Windows-only API，其余平台/未 attach 时静默——
-   * 托盘「插件隔离报告」仍在）。自身绝不抛错。
+   * 气泡/桌面通知（运行期新隔离、动作确认等）。win32 走 Tray.displayBalloon；
+   * 其余平台按探测结果走 Electron Notification（构造与 show 都可能因环境缺席而抛错，
+   * 整体包裹静默——失败路径另有原生错误对话框兜底）。自身绝不抛错。
    */
   notify(title: string, content: string): void {
+    const channel = resolveNotifyChannel({ platform: process.platform, notificationsAvailable: this.opts.notificationsAvailable })
     try {
-      this.tray?.displayBalloon({ title, content })
+      if (channel === 'balloon') {
+        this.tray?.displayBalloon({ title, content })
+      } else if (channel === 'notification') {
+        const notification = new Notification({ title, body: content })
+        notification.on('click', () => this.opts.onShow())
+        notification.show()
+      }
     } catch {
-      /* displayBalloon 不可用（非 Windows/托盘已销毁）：静默 */
+      /* displayBalloon/Notification 不可用（通知守护缺席、托盘已销毁等）：静默 */
     }
   }
 
