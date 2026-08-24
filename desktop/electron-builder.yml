@@ -46,6 +46,8 @@ linux:
   target: [AppImage, deb]
   icon: build/icon.png
   category: Utility
+  # deb 元数据要求（fpm 校验 maintainer/email/homepage）。
+  maintainer: qinyre <qinyre@users.noreply.github.com>
   # 默认 executableName 会从 productName 推出 "dsh desktop"（含空格）——/usr/bin 符号
   # 链接、hicolor 图标文件名、desktop entry 的 Icon= 与 verify-bundle 的可执行名四处
   # 同源，不可删。
