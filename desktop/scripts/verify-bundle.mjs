@@ -77,16 +77,20 @@ if (!existsSync(exe)) {
   const isoExe = join(appDir, layout.exeName)
   if (!isWin) chmodSync(isoExe, 0o755)
   const entry = join(appDir, 'resources', 'app.asar.unpacked', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  // 干净 env 里唯一的透传例外：LD_LIBRARY_PATH（存在才带）——开发机若用用户态库目录
+  // 跑无头验证（WSL 无 sudo 场景），不给它子进程会在动态链接阶段退 127。
   const child = spawn(isoExe, ['--expose-internals', entry, 'web', '--no-open', '--port', '0', '--host', '127.0.0.1'], {
     cwd: iso,
     env: {
       ELECTRON_RUN_AS_NODE: '1',
       DSH_HOME: home,
       PATH: layout.pathEnv,
+      ...(process.env.LD_LIBRARY_PATH !== undefined ? { LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let out = ''
+  child.on('error', (error) => { out += `\n[spawn error] ${String(error)}` })
   child.stdout.on('data', (c) => { out += c })
   child.stderr.on('data', (c) => { out += c })
   const ready = await new Promise((resolve) => {
@@ -94,11 +98,13 @@ if (!existsSync(exe)) {
     const poll = setInterval(() => {
       const m = /dsh web: http:\/\/127\.0\.0\.1:(\d+)/.exec(out)
       if (m) { clearTimeout(t); clearInterval(poll); resolve(m[1]) }
-      if (child.exitCode !== null) { clearTimeout(t); clearInterval(poll); resolve(null) }
+      // exitCode 有值=已退出；pid 为空=从未启动成功（spawn error 路径）。
+      if (child.exitCode !== null || child.pid === undefined) { clearTimeout(t); clearInterval(poll); resolve(null) }
     }, 250)
   })
   child.kill()
-  await new Promise((r) => child.once('close', r))
+  // kill 后 close 极端情况可能不达（spawn error 路径），限时等待防脚本悬死。
+  await Promise.race([new Promise((r) => child.once('close', r)), new Promise((r) => { setTimeout(r, 5_000) })])
   if (ready) console.log(`boot: dsh web ready on :${ready} — ok`)
   else fail(`packaged sidecar never reached readiness (exit ${child.exitCode}); tail:\n${out.slice(-800)}`)
   rmSync(iso, { recursive: true, force: true })
