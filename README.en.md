@@ -12,7 +12,7 @@ Install and run. No Node.js, pnpm, or terminal required.
 
 [![CI](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Release](https://img.shields.io/github/v/release/qinyre/dsh-Desktop)](https://github.com/qinyre/dsh-Desktop/releases)
 [![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.2-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
@@ -30,7 +30,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The installer bundles the whole runtime — Node, a pnpm shim, and dsh. Nothing to preinstall.
 - The Web UI runs unmodified: workspaces, sessions, approvals, models, skills, and terminals all work inside the app window, because DSH Desktop is just the shell around `dsh web`.
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
-- Approvals and finished turns raise native Windows notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
+- Approvals and finished turns raise desktop notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
 - Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
 - Built-in plugin guard: four problem classes — conflicts, missing dependencies, plugin errors, and corrupt configuration — are detected before and after launch, both in the service and in the in-page plugin tree; the offending plugin is quarantined so the app still opens, with a dialog naming the plugin and the cause. Safe mode kicks in when no cause can be found, and plugin health keeps being monitored after launch — see [Plugin guard](#plugin-guard).
 - Plugins can be managed straight from the tray: when a plugin failure keeps the page from loading at all, the in-app plugin manager goes down with it — the tray's "Plugins" section needs neither the service nor the page to list every plugin's state, disable or re-enable them individually, enter safe mode manually, or restore packages the guard removed from the launch list.
@@ -39,13 +39,13 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 
 ## Install
 
-Download the latest `DSH-Desktop-Setup-x.x.x.exe` from the [Releases](https://github.com/qinyre/dsh-Desktop/releases) page and run it.
+Grab the package for your platform from the [Releases](https://github.com/qinyre/dsh-Desktop/releases) page.
 
-Requirements: Windows 10/11 x64. Installs per-user; no administrator rights required.
+**Windows (10/11 x64)**: run `DSH-Desktop-Setup-x.x.x.exe`. Installs per-user; no administrator rights required.
 
 > The installer is not code-signed (the cheapest certificate an individual can buy is around €105/year — skipped for now), so Windows SmartScreen may block the first run; choose "More info" → "Run anyway". To sign your own builds, see [docs/signing.md](docs/signing.md).
 
-Linux (x64) ships two packages. The `DSH-Desktop-x.x.x.AppImage` runs directly after `chmod +x`, and later versions download and install themselves through the in-app update check; the `DSH-Desktop-x.x.x.deb` installs through your package manager and is upgraded by downloading a newer deb manually (the in-app update check stays disabled under deb installs, so it never claims a false "up to date"). The AppImage uses a statically linked runtime, so it doesn't depend on the system FUSE library. On distributions that restrict unprivileged user namespaces (Ubuntu 24.04 and friends) the app automatically runs without the Chromium sandbox — expected behavior in the AppImage ecosystem; prefer the deb if you want the sandbox (its install script configures the matching AppArmor allowance).
+**Linux (x64)** ships two packages. The `DSH-Desktop-x.x.x.AppImage` runs directly after `chmod +x`, and later versions download and install themselves through the in-app update check; the `DSH-Desktop-x.x.x.deb` installs through your package manager and is upgraded by downloading a newer deb manually (the in-app update check stays disabled under deb installs, so it never claims a false "up to date"). The AppImage uses a statically linked runtime, so it doesn't depend on the system FUSE library. On distributions that restrict unprivileged user namespaces (Ubuntu 24.04 and friends) the app automatically runs without the Chromium sandbox — expected behavior in the AppImage ecosystem; prefer the deb if you want the sandbox (its install script configures the matching AppArmor allowance).
 
 The tray icon and desktop notifications rely on services that mainstream desktop environments provide. When no tray host exists, closing the window quits the app — it never hides the window into a tray that isn't there.
 
@@ -111,14 +111,14 @@ Most launch failures recover on their own (see [Plugin guard](#plugin-guard) abo
 
 If it stays broken: quit completely from the tray icon and start again; check the log at `%APPDATA%\DSH Desktop\logs\sidecar.log` (on Linux: `~/.config/DSH Desktop/logs/sidecar.log`) — plugin and startup problems all land there (with a few rotated older copies); reinstalling the app does not touch your data (next section).
 
-Please report problems via [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues), attaching that log plus your Windows version and installer version. For security issues, use the channels in [SECURITY.md](SECURITY.md) instead of a public issue.
+Please report problems via [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues), attaching that log plus your OS (Windows version or Linux distribution) and package version. For security issues, use the channels in [SECURITY.md](SECURITY.md) instead of a public issue.
 
 ## Your data
 
 All user data lives in one place: `%APPDATA%\DSH Desktop\dsh-home` (on Linux: `~/.config/DSH Desktop/dsh-home`) — sessions (append-only logs, so a crashed process loses nothing already saved), API keys and credentials, settings, and the plugins installed into the app's own profile. Copying the directory is a complete manual backup; when migrating to another machine, sessions and credentials work as-is, and the odd plugin may need a reinstall.
 
-- Before installing an update, the app automatically backs the whole directory up to `%APPDATA%\DSH Desktop\backups`, keeping the most recent copy.
-- Uninstalling does not delete this data; remove the `%APPDATA%\DSH Desktop` folder to erase everything.
+- Before installing an update, the app automatically backs the whole directory up to `%APPDATA%\DSH Desktop\backups` (on Linux: `~/.config/DSH Desktop/backups`), keeping the most recent copy.
+- Uninstalling does not delete this data; remove the `%APPDATA%\DSH Desktop` folder (on Linux: `~/.config/DSH Desktop`) to erase everything.
 
 ## How it works
 

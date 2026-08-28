@@ -12,7 +12,7 @@
 
 [![CI](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/qinyre/dsh-Desktop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 [![Electron](https://img.shields.io/badge/Electron-43-9feaf9?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Release](https://img.shields.io/github/v/release/qinyre/dsh-Desktop)](https://github.com/qinyre/dsh-Desktop/releases)
 [![dsh](https://img.shields.io/badge/bundles%20dsh-0.1.1--rc.2-4D6BFE)](https://www.npmjs.com/package/@deepseek-ai/dsh)
@@ -30,7 +30,7 @@ DeepSeek Harness 自带一流的 Web UI，但它假定用户具备一套开发�
 - 安装包自带完整运行时（Node、pnpm shim、dsh），机器上无需预装任何环境。
 - Web UI 原封不动：`dsh web` 的工作区、会话、审批、模型、技能、终端都在应用窗口里，DSH Desktop 只是外层的壳应用。
 - sidecar 有监督重启（指数退避），进程崩溃后自动重新拉起；dsh 的 append-only 会话日志也保证对话不丢。
-- 窗口隐藏或失焦时，等待中的审批和回合结束会发 Windows 原生通知；窗口可以关闭到托盘，长任务在后台继续。
+- 窗口隐藏或失焦时，等待中的审批和回合结束会发桌面通知；窗口可以关闭到托盘，长任务在后台继续。
 - 首次启动预装四个插件：可视化插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）、任意包名直装的「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）、「技能与 MCP」管理分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）、归档管理与对话刻度尺（[dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)），详见[插件](#插件)。
 - 内建插件运行保障：冲突、依赖缺失、插件自身错误、配置损坏四类问题，无论出现在服务还是页面内的插件树，启动前后都会被自动识别；问题插件被隔离以保证应用照常打开，弹窗说明受影响的插件与原因。原因无法定位时由安全模式兜底，启动后仍持续监测各插件的运行状态，机制详见[插件运行保障](#插件运行保障)。
 - 托盘可以直接管理插件：页面因插件故障打不开时，应用内的插件管理器随之失效，而系统托盘里的「插件管理」不依赖服务与页面——查看各插件启用状态、逐一停用或启用、手动进入安全模式、恢复被移出启动清单的插件包，全部可用。
@@ -39,13 +39,13 @@ DeepSeek Harness 自带一流的 Web UI，但它假定用户具备一套开发�
 
 ## 安装
 
-从 [Releases](https://github.com/qinyre/dsh-Desktop/releases) 下载最新的 `DSH-Desktop-Setup-x.x.x.exe` 并运行。
+从 [Releases](https://github.com/qinyre/dsh-Desktop/releases) 下载对应平台的安装包。
 
-环境要求：Windows 10/11 x64。安装到当前用户目录，无需管理员权限。
+**Windows（10/11 x64）**：运行 `DSH-Desktop-Setup-x.x.x.exe`，安装到当前用户目录，无需管理员权限。
 
 > 安装器未做代码签名（个人可办的证书最低约 €105/年，暂不购买），首次运行可能被 Windows SmartScreen 拦截——此时选择「更多信息」→「仍要运行」即可。如需为自己的构建签名，见 [docs/signing.md](docs/signing.md)。
 
-Linux（x64）提供两种包。`DSH-Desktop-x.x.x.AppImage` 下载后 `chmod +x` 即可直接运行，后续版本经应用内的更新检查自动下载安装；`DSH-Desktop-x.x.x.deb` 走系统包管理器安装，升级需手动下载新版覆盖（deb 安装下应用内的更新检查不启用，避免误导）。AppImage 打包使用静态链接的运行时，不依赖系统的 FUSE 库；在 Ubuntu 24.04 这类限制了非特权用户命名空间的发行版上，应用会自动以无 Chromium 沙箱的模式运行——这是 AppImage 生态的预期行为，介意的话改用 deb（其安装脚本会自动配置对应的 AppArmor 授权）。
+**Linux（x64）**：提供两种包。`DSH-Desktop-x.x.x.AppImage` 下载后 `chmod +x` 即可直接运行，后续版本经应用内的更新检查自动下载安装；`DSH-Desktop-x.x.x.deb` 走系统包管理器安装，升级需手动下载新版覆盖（deb 安装下应用内的更新检查不启用，避免误导）。AppImage 打包使用静态链接的运行时，不依赖系统的 FUSE 库；在 Ubuntu 24.04 这类限制了非特权用户命名空间的发行版上，应用会自动以无 Chromium 沙箱的模式运行——这是 AppImage 生态的预期行为，介意的话改用 deb（其安装脚本会自动配置对应的 AppArmor 授权）。
 
 托盘图标与桌面通知依赖桌面环境自带的服务（主流桌面均内置）。运行环境里没有托盘宿主时，关闭窗口就是退出应用，不会把窗口藏进一个不存在的托盘。
 
@@ -111,14 +111,14 @@ dsh 的插件以整棵树为单位激活：任何一个插件导入失败、与�
 
 仍未恢复时：从托盘图标完全退出后重新启动；查看日志 `%APPDATA%\DSH Desktop\logs\sidecar.log`（Linux 为 `~/.config/DSH Desktop/logs/sidecar.log`）——插件与启动问题都会落在这里（连同最近几轮的轮转副本）；重装应用不影响数据，见下节。
 
-问题请通过 [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues) 反馈，附上上述日志、Windows 版本与安装包版本号。安全问题请勿开公开 issue，按 [SECURITY.md](SECURITY.md) 的渠道报告。
+问题请通过 [GitHub Issues](https://github.com/qinyre/dsh-Desktop/issues) 反馈，附上上述日志、操作系统（Windows 版本或 Linux 发行版）与安装包版本号。安全问题请勿开公开 issue，按 [SECURITY.md](SECURITY.md) 的渠道报告。
 
 ## 你的数据
 
 全部用户数据集中在一个目录：`%APPDATA%\DSH Desktop\dsh-home`（Linux 为 `~/.config/DSH Desktop/dsh-home`），包括会话记录（append-only 日志，进程崩溃也不丢已落盘的对话）、API key 与凭据、设置，以及装进应用自身 profile 的插件。复制整个目录即可完成手动备份；换机迁移时会话与凭据直接可用，个别插件可能需要重装。
 
-- 安装更新前，应用会自动把该目录完整备份到 `%APPDATA%\DSH Desktop\backups`，保留最近一份；
-- 卸载应用不会删除这些数据；确认不再需要时，删除 `%APPDATA%\DSH Desktop` 目录即可彻底清除。
+- 安装更新前，应用会自动把该目录完整备份到 `%APPDATA%\DSH Desktop\backups`（Linux 为 `~/.config/DSH Desktop/backups`），保留最近一份；
+- 卸载应用不会删除这些数据；确认不再需要时，删除 `%APPDATA%\DSH Desktop` 目录（Linux 为 `~/.config/DSH Desktop`）即可彻底清除。
 
 ## 工作原理
 
