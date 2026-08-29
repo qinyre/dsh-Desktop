@@ -74,11 +74,13 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.9'
  * custom 来源技能可就地编辑（预览自带 marked+DOMPurify）；0.3.5 起删除技能仓库改为
  * 先卸载 provider 的目录监听再删树（Windows 上删被 watch 目录必 EPERM）；0.3.6 起
  * skill-filesystem 依赖对齐 0.1.1-rc.1 宿主运行时；0.3.7 起 cordis.patch.yml 存在
- * 语法错误时页面直接报出文件路径与出错行列、不写入任何内容（此前是内部英文报错）。
+ * 语法错误时页面直接报出文件路径与出错行列、不写入任何内容（此前是内部英文报错）；
+ * 0.3.8 起 MCP 页合并展示全局层（DSH_HOME/cordis.patch.yml，对所有 profile 生效），
+ * 行带「全局/当前 profile」范围标记，新增可选写入目标层。
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.7'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.8'
 
 /**
  * 预装的归档与刻度尺插件版本（qinyre/dsh-plugin-atlas，设置页一级分区「归档管理」
