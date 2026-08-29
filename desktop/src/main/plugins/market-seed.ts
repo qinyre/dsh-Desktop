@@ -77,10 +77,13 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.9'
  * 语法错误时页面直接报出文件路径与出错行列、不写入任何内容（此前是内部英文报错）；
  * 0.3.8 起 MCP 页合并展示全局层（DSH_HOME/cordis.patch.yml，对所有 profile 生效），
  * 行带「全局/当前 profile」范围标记，新增与市场安装均可选写入目标层。
+ * 0.3.9 起 MCP 行带连通性检查（stdio 查 PATH 上命令是否存在、http 短超时 GET
+ * 探测，不启动服务器）、行可复制到另一层，导入弹窗可选写入层且来源扩到
+ * Cursor 与 Gemini CLI。
  * 同样只在预装时钉住；无需 patch 覆盖——待重启横幅在桌面模式下经 dsh:restart-sidecar
  * IPC 交回壳层。
  */
-export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.8'
+export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.9'
 
 /**
  * 预装的归档与刻度尺插件版本（qinyre/dsh-plugin-atlas，设置页一级分区「归档管理」
