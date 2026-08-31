@@ -88,12 +88,17 @@ export class WindowController {
     return this.win
   }
 
-  loadDsh(port: number): void {
+  loadDsh(port: number, token: string | undefined): void {
     // 端口每次重启都会变（设计书 §4）：总是 loadURL 新地址，不做 reload。
     this.port = port
     this.showingStatus = false
     this.lastDshLoadAt = Date.now()
-    void this.win?.loadURL(`http://127.0.0.1:${port}`)
+    // 0.1.2-alpha 起 webserver 全量鉴权：首载带进程令牌（GET /?token= → 303 铸
+    // HttpOnly 会话 cookie），此后同源请求/reload 自动携带；旧运行时无令牌按裸 URL。
+    const url = token === undefined
+      ? `http://127.0.0.1:${port}`
+      : `http://127.0.0.1:${port}/?token=${encodeURIComponent(token)}`
+    void this.win?.loadURL(url)
   }
 
   /**

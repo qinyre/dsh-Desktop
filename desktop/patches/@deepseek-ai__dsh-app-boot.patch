@@ -1,11 +1,11 @@
 diff --git a/lib/index.js b/lib/index.js
-index 3a53e819b0affbe6fee86ce2328634f3f8d1bdd0..578c30c5ce3688e240ae53d0630b0c32b9e42ded 100644
+index fbce05c8b727eb7b04af594d85ce6c4a55e07544..ead0035f2dbc4eb41963e4e6ff37be61698fc27c 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -544,7 +544,19 @@ function loadProfile(binName, name, installAnchor, home = resolveDshHome(), opti
- 		initProfile(dir, template);
- 	}
- 	const layers = (normalizeShippedProfile(name, dir, readProfileManifest(binName, dir)).dsh?.profile?.bundles ?? []).map((packageName) => {
+@@ -857,7 +857,19 @@ function loadProfile(binName, name, installAnchor, home = resolveDshHome(), opti
+ 	if (rawPatchReload !== void 0 && rawPatchReload !== "live" && rawPatchReload !== "startup") throw new Error(`${binName}: profile manifest ${join(dir, "package.json")} dsh.profile.patchReload must be "live" or "startup"`);
+ 	const patchReload = rawPatchReload ?? "live";
+ 	const layers = bundles.map((packageName) => {
 -		const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir);
 +		let packageDir;
 +		try {
@@ -23,7 +23,7 @@ index 3a53e819b0affbe6fee86ce2328634f3f8d1bdd0..578c30c5ce3688e240ae53d0630b0c32
  		const declared = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).dsh?.bundle?.patch;
  		if (declared === void 0) throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`);
  		const patchPath = join(packageDir, declared);
-@@ -554,7 +566,7 @@ function loadProfile(binName, name, installAnchor, home = resolveDshHome(), opti
+@@ -867,7 +879,7 @@ function loadProfile(binName, name, installAnchor, home = resolveDshHome(), opti
  			patchPath,
  			patches: loadOverlayPatches(binName, patchPath)
  		};

@@ -1,0 +1,12 @@
+diff --git a/lib/plugin-F7ZVfRyo.js b/lib/plugin-F7ZVfRyo.js
+index 0ec834947e5a46d3c53d7d5a6ca2519b1e57d7ec..20ac7bc7ffd85b27992d9f362dcf8190b120224a 100644
+--- a/lib/plugin-F7ZVfRyo.js
++++ b/lib/plugin-F7ZVfRyo.js
+@@ -109,6 +109,7 @@ function runPlugin(profile, args) {
+ 	const result = spawnSync("pnpm", args.map((argument) => anchorPathSpec(argument, process.cwd())), {
+ 		cwd: dir,
+ 		stdio: "inherit",
++		windowsHide: true,
+ 		shell: process.platform === "win32"
+ 	});
+ 	if (result.error !== void 0) {

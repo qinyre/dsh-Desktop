@@ -9,12 +9,11 @@ describe('ReconnectBackoff', () => {
     expect(backoff.nextDelayMs()).toBe(4000)
     expect(backoff.nextDelayMs()).toBe(4000)
   })
-  it('resets once both sockets are open again', () => {
+  it('resets once the $events stream is ready again', () => {
     const backoff = new ReconnectBackoff()
     backoff.nextDelayMs()
     backoff.nextDelayMs()
-    expect(backoff.socketOpened()).toBe(false) // 第一条流恢复不算痊愈
-    expect(backoff.socketOpened()).toBe(true) // 双流都 open 才复位
+    expect(backoff.socketOpened()).toBe(true) // 单流 ready 即痊愈
     expect(backoff.nextDelayMs()).toBe(1000)
   })
   it('reset returns to the first step (new port = new cycle)', () => {

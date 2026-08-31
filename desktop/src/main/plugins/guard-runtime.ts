@@ -6,6 +6,8 @@
  * 'pluginInventory/list'（gateway 只认两段端点；点式 host.describe 走的是 apiproxy 兜底
  * 层，不适用此处），payload 必须恰一个 args 键，content-type 必须 application/json；
  * 响应 {type:'server-response', result:{ok, value:{entries}}}。
+ * dsh 0.1.2-alpha 起 /api 全量鉴权：须携带就绪行令牌兑换的会话 cookie
+ * （authCookie getter，undefined 时按旧无鉴权路径直连）。
  */
 
 export interface RuntimeInventoryEntry {
@@ -18,6 +20,8 @@ export interface RuntimeInventoryEntry {
 export interface PluginRuntimeMonitorOpts {
   /** sidecar 当前端口（每次重启变化；undefined 时本 tick 跳过）。 */
   port: () => number | undefined
+  /** 会话 cookie 头（0.1.2-alpha 鉴权；undefined 时按旧无鉴权路径直连）。 */
+  authCookie?: () => string | undefined
   /** 轮询间隔，默认 30s。 */
   intervalMs?: number
   /** 测试注入；生产用全局 fetch。 */
@@ -63,7 +67,10 @@ export class PluginRuntimeMonitor {
       const fetchImpl = this.opts.fetchImpl ?? fetch
       const res = await fetchImpl(`http://127.0.0.1:${port}/api/pluginInventory/list`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(this.opts.authCookie === undefined ? {} : { cookie: this.opts.authCookie() }),
+        },
         body: JSON.stringify({ type: 'client-request', rpcId: `plugin-guard-${++this.rpcSeq}`, method: 'pluginInventory/list', payload: { args: {} } }),
         signal: AbortSignal.timeout(10_000),
       })

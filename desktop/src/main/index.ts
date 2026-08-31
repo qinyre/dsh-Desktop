@@ -11,6 +11,7 @@ import { showGuardReport } from './plugins/guard-report'
 import { PluginRuntimeMonitor } from './plugins/guard-runtime'
 import { auditProfileBundles, BundleBrickHealer } from './sidecar/profile-heal'
 import { repairSkinsBrick, skinBrickDetected } from './sidecar/skin-selfheal'
+import { mintSidecarCookie } from './sidecar/auth'
 import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
@@ -52,6 +53,8 @@ let windows: WindowController | undefined
 let guard: PluginGuard | undefined
 // ready 弹窗轮次号：每次 ready 递增，旧轮弹窗闭包据此失效（防 restart 循环双弹）。
 let readyGeneration = 0
+/** 本轮 sidecar 的会话 cookie（0.1.2-alpha 鉴权；运行期 guard 轮询用）。 */
+let sidecarCookie: string | undefined
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -249,6 +252,7 @@ if (!gotLock) {
     // pluginInventory 端点失明时这是运行期守卫仅存通道。
     const runtimeMonitor = guard === undefined ? undefined : new PluginRuntimeMonitor({
       port: () => sidecar?.port,
+      authCookie: () => sidecarCookie,
       onInventory: (entries) => { if (guard !== undefined) guard.considerRuntime(entries) },
       onTick: () => { runHealer('guard patrol', () => guard?.patrol()) },
       onError: (error) => { logger.appendLine(`[dsh-desktop] plugin guard runtime poll failed: ${String(error)}`) },
@@ -265,9 +269,18 @@ if (!gotLock) {
     let clientReloads = 0
     let clientStuckReported = false
     sidecar.on('ready', (port) => {
-      windows?.loadDsh(port)
+      const launchToken = sidecar?.token
+      windows?.loadDsh(port, launchToken)
       guard?.noteBootSuccess()
       runtimeMonitor?.start()
+      // 0.1.2-alpha 起 /api 鉴权：就绪行令牌兑换会话 cookie 供运行期轮询用。
+      // EventTap 与渲染器各自持有兑换路径，这里只管 guard 的 HTTP 探针；兑换失败
+      // （旧运行时/竞态）时 authCookie 返回旧值或 undefined，由服务端裁决。
+      if (launchToken !== undefined) {
+        void mintSidecarCookie({ port, token: launchToken }).then((cookie) => { sidecarCookie = cookie })
+      } else {
+        sidecarCookie = undefined
+      }
       // 巡检两轮确认窗口清零：轮转后 ready 的当前日志只含本轮干净 boot，从头扫窗口。
       guard?.patrolBegin()
       clientReloads = 0

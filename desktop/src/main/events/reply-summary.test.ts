@@ -1,42 +1,62 @@
 import { describe, expect, it } from 'vitest'
 import { lastAssistantText, summarizeReply } from './reply-summary'
 
-describe('lastAssistantText（从事件页折叠最后一条 agent 回复）', () => {
-  it('识别 history 页实测的 {event:{…}} 包装形状', () => {
-    // 0.1.1-rc.1 实机响应：events 数组每项是 {event:{type,seq,time,data}}
-    const events = [
-      { event: { type: 'permission/preset', seq: 0, data: { preset: 'workspace-write' } } },
-      { event: { type: 'user/message', seq: 1, data: { content: [{ type: 'text', text: '问题' }] } } },
-      { event: { type: 'assistant/message', seq: 2, time: 1, data: { content: [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }] } } },
+/** 0.1.2-alpha session/follow 快照记录：{type:'event',event} 裸事件壳。 */
+const eventRecord = (type: string, data: unknown) => ({ type: 'event', event: { type, seq: 0, time: 0, data } })
+
+describe('lastAssistantText（从快照 records 折叠最后一条 agent 回复）', () => {
+  it('取 assistant/message 的 data.message.content 文本块', () => {
+    const records = [
+      eventRecord('user/message', { message: { content: [{ type: 'text', text: '问题' }] } }),
+      eventRecord('assistant/message', {
+        turn: 1, step: 1,
+        message: { content: [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }] },
+      }),
     ]
-    expect(lastAssistantText(events)).toBe('第一段\n第二段')
+    expect(lastAssistantText(records)).toBe('第一段\n第二段')
   })
 
-  it('从尾部向前找最近的 assistant/message，兼容裸事件形状', () => {
-    const events = [
-      { type: 'user/message', data: { content: [{ type: 'text', text: '问题' }] } },
-      { type: 'assistant/message', data: { content: [{ type: 'text', text: '旧回复' }] } },
-      { type: 'assistant/message', seq: 9, data: { content: [{ type: 'text', text: '新回复第一段' }, { type: 'text', text: '第二段' }] } },
+  it('从尾部向前找最近的 assistant/message', () => {
+    const records = [
+      eventRecord('assistant/message', { message: { content: [{ type: 'text', text: '旧回复' }] } }),
+      eventRecord('assistant/message', { message: { content: [{ type: 'text', text: '新回复' }] } }),
     ]
-    expect(lastAssistantText(events)).toBe('新回复第一段\n第二段')
+    expect(lastAssistantText(records)).toBe('新回复')
   })
 
   it('跳过空文本与纯非文本块的消息', () => {
-    const events = [
-      { event: { type: 'assistant/message', data: { content: [{ type: 'image' }] } } },
-      { event: { type: 'assistant/message', data: { content: [{ type: 'text', text: '   ' }] } } },
-      { event: { type: 'assistant/message', data: { content: [{ type: 'text', text: '最终' }] } } },
+    const records = [
+      eventRecord('assistant/message', { message: { content: [{ type: 'image' }] } }),
+      eventRecord('assistant/message', { message: { content: [{ type: 'text', text: '   ' }] } }),
+      eventRecord('assistant/message', { message: { content: [{ type: 'text', text: '最终' }] } }),
     ]
-    expect(lastAssistantText(events)).toBe('最终')
+    expect(lastAssistantText(records)).toBe('最终')
   })
 
-  it('非数组、空数组、没有 assistant/message 时返回 undefined', () => {
+  it('无完整消息时回退最近一条 chunkrow/text-chunks 打包行', () => {
+    const records = [
+      eventRecord('user/message', { message: { content: [{ type: 'text', text: '问题' }] } }),
+      { type: 'chunks', event: { type: 'chunkrow/text-chunks', seq: 3, time: 0, data: { turn: 1, step: 1, index: 0, dt: [], texts: ['你', '好'] } } },
+    ]
+    expect(lastAssistantText(records)).toBe('你好')
+  })
+
+  it('assistant/message 优先于更近的打包行', () => {
+    const records = [
+      { type: 'chunks', event: { type: 'chunkrow/text-chunks', seq: 1, time: 0, data: { texts: ['增量'] } } },
+      eventRecord('assistant/message', { message: { content: [{ type: 'text', text: '完整消息' }] } }),
+      { type: 'chunks', event: { type: 'chunkrow/text-chunks', seq: 5, time: 0, data: { texts: ['更近的增量'] } } },
+    ]
+    expect(lastAssistantText(records)).toBe('完整消息')
+  })
+
+  it('非数组、空数组、形状不合时返回 undefined', () => {
     expect(lastAssistantText(undefined)).toBeUndefined()
     expect(lastAssistantText(null)).toBeUndefined()
     expect(lastAssistantText([])).toBeUndefined()
-    expect(lastAssistantText([{ type: 'user/message' }])).toBeUndefined()
-    expect(lastAssistantText([{ event: { type: 'step/start' } }])).toBeUndefined()
-    expect(lastAssistantText([{ event: { type: 'assistant/message' } }])).toBeUndefined()
+    expect(lastAssistantText([{ type: 'event', event: { type: 'user/message' } }])).toBeUndefined()
+    expect(lastAssistantText([{ type: 'event', event: { type: 'assistant/message' } }])).toBeUndefined()
+    expect(lastAssistantText([{ type: 'chunks', event: { type: 'chunkrow/reasoning-chunks', data: { texts: ['思考'] } } }])).toBeUndefined()
   })
 })
 

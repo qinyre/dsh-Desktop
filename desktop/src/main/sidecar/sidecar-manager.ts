@@ -4,7 +4,7 @@ import { backoffDelayMs } from './backoff'
 import type { ResolvedRuntime } from './runtime-resolver'
 import type { SidecarLogger } from './sidecar-logger'
 import { killSidecar } from './sidecar-process'
-import { parseReadyPort } from './url-line'
+import { parseReadyLine } from './url-line'
 
 export type SidecarState = 'idle' | 'spawning' | 'ready' | 'crashed' | 'failed'
 
@@ -36,6 +36,7 @@ export class SidecarManager {
   private inflightRestart: Promise<void> | undefined
   private _state: SidecarState = 'idle'
   private _port: number | undefined
+  private _token: string | undefined
   private readonly listeners: { [K in keyof SidecarEvents]?: Listener<K>[] } = {}
 
   constructor(private readonly opts: {
@@ -50,6 +51,8 @@ export class SidecarManager {
 
   get state(): SidecarState { return this._state }
   get port(): number | undefined { return this._port }
+  /** 本轮就绪行的进程令牌（0.1.2-alpha 鉴权：cookie 兑换凭据）；旧运行时为 undefined。 */
+  get token(): string | undefined { return this._token }
 
   on<K extends keyof SidecarEvents>(event: K, listener: Listener<K>): this {
     // 显式绑定到 Listener<K>[]：映射类型的泛型索引访问在 strict 下会塌缩成 never[]，
@@ -137,6 +140,7 @@ export class SidecarManager {
       await this.terminateCurrent()
     }
     this._port = undefined
+    this._token = undefined
     this.stopping = false
     this.restarts = 0 // 上一轮 failed 耗尽的预算不得带进新一轮
     this.spawnSidecar()
@@ -148,6 +152,7 @@ export class SidecarManager {
     this.clearTimer()
     await this.terminateCurrent()
     this._port = undefined
+    this._token = undefined
     this.restarts = 0
     this.setState('idle')
   }
@@ -178,6 +183,7 @@ export class SidecarManager {
     const epoch = ++this.epoch
     this.child = child
     this._port = undefined
+    this._token = undefined
     this.setState('spawning')
 
     let timedOut = false // 本轮超时判死后不再接受 ready 行：垂死 child 不得报"已连上"
@@ -185,14 +191,15 @@ export class SidecarManager {
     const feed = (stream: NodeJS.ReadableStream): void => {
       createInterface({ input: stream }).on('line', (line) => {
         this.opts.logger.appendLine(line)
-        const port = parseReadyPort(line)
+        const ready = parseReadyLine(line)
         // 只有"当前轮次、未判死"的 child 才能宣布 ready：旧 child 迟到的端口行
         // （restart 后才 flush 出来）不得污染新一轮的端口与 ready 事件。
-        if (port !== undefined && this._state === 'spawning' && epoch === this.epoch && !timedOut) {
-          this._port = port
+        if (ready !== undefined && this._state === 'spawning' && epoch === this.epoch && !timedOut) {
+          this._port = ready.port
+          this._token = ready.token
           this.restarts = 0
           this.setState('ready')
-          this.emit('ready', port)
+          this.emit('ready', ready.port)
         }
       })
     }
