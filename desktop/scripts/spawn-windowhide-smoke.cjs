@@ -2,7 +2,7 @@
 // 家长模式：断言补丁在位；再以 ELECTRON_RUN_AS_NODE 拉起子模式跑真实 powershell。
 // 子模式（spawn-windowhide-child.mjs）经公开 API LocalSubprocessRuntime.spawn 执行并回收。
 const { spawnSync } = require('node:child_process')
-const { readFileSync } = require('node:fs')
+const { readFileSync, readdirSync } = require('node:fs')
 const path = require('node:path')
 
 if (process.platform !== 'win32') {
@@ -20,19 +20,31 @@ const fail = (message) => {
 const sites = [
   ['@deepseek-ai/dsh-subprocess-local/lib/index.js', 'windowsHide: true,\n\t\tdetached: platform !== "win32"', '工具 spawn'],
   ['@deepseek-ai/dsh-subprocess-local/lib/index.js', '{ stdio: "ignore", windowsHide: true }', 'taskkill'],
-  ['@deepseek-ai/dsh/lib/plugin-9h8shc4d.js', 'windowsHide: true,\n\t\tshell: process.platform === "win32"', 'pnpm 安装'],
-  // ACL 运行器的原生 CreateProcessAsUserW：创建标志保持原样，STARTUPINFO 加
+  // rollup 的 chunk 名带内容哈希，跨运行时版本漂移（rc.2 的 plugin-9h8shc4d →
+  // alpha.2 的 plugin-F7ZVfRyo），故按包目录扫描而非点名文件。
+  ['@deepseek-ai/dsh/lib/', 'windowsHide: true,\n\t\tshell: process.platform === "win32"', 'pnpm 安装'],
+  // ACL 运行器（0.1.2 起补丁目标包由 dsh-sandbox-windows-acl 迁至 dsh-win32-process）
+  // 的原生 CreateProcessAsUserW：创建标志保持原样，STARTUPINFO 加
   // STARTF_USESHOWWINDOW|SW_HIDE 藏掉自动创建的控制台窗口。注：CREATE_NO_WINDOW /
   // DETACHED_PROCESS 虽也不弹窗，但会让 PowerShell（5.1 与 7 均是）在无控制台下吞掉
   // 管道输出（cmd 不受影响）——实测矩阵后选 SW_HIDE。两处 spawn 位点都要在。
-  ['@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js', 'dwFlags: 257,', 'ACL 原生 spawn SW_HIDE（管道版）'],
-  ['@deepseek-ai/dsh-sandbox-windows-acl/lib/types-CNjZgO4h.js', 'wShowWindow: 0,', 'ACL 原生 spawn SW_HIDE（inherit 版）'],
+  ['@deepseek-ai/dsh-win32-process/lib/index.js', 'dwFlags: 257,', 'ACL 原生 spawn SW_HIDE（管道版）'],
+  ['@deepseek-ai/dsh-win32-process/lib/index.js', 'wShowWindow: 0,', 'ACL 原生 spawn SW_HIDE（inherit 版）'],
 ]
 // pnpm 布局下传递依赖不在顶层（.pnpm/node_modules 隐藏提升位），npm 扁平布局才在；
-// 补丁经 pnpm patchedDependencies 作用于两处共用的 store 真身。
+// 补丁经 pnpm patchedDependencies 作用于两处共用的 store 真身。以 / 结尾的条目是
+// 包目录：拼起包内全部 .js 后由调用方查 needle。
 const readInstalled = (file) => {
   for (const candidate of [path.join(root, 'node_modules', file), path.join(root, 'node_modules', '.pnpm', 'node_modules', file)]) {
-    try { return readFileSync(candidate, 'utf8') } catch { /* try next layout */ }
+    try {
+      if (file.endsWith('/')) {
+        return readdirSync(candidate)
+          .filter((name) => name.endsWith('.js'))
+          .map((name) => { try { return readFileSync(path.join(candidate, name), 'utf8') } catch { return '' } })
+          .join('\n')
+      }
+      return readFileSync(candidate, 'utf8')
+    } catch { /* try next layout */ }
   }
   fail(`${file} not found (flat or .pnpm hoist) — run pnpm install first`)
 }
