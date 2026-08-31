@@ -61,8 +61,13 @@ export const DSHMARKET_SPEC = 'dshmarket@1.11.2'
  * 谁先抢到端口算谁的，输家们无限滞留。认领文件仲裁出唯一交接者，其余 relay
  * 直接退场；看门狗超时（DSH_INSTALLER_WATCHDOG_MS 可调）自动退化为隐藏
  * 分离路径，交接链不再可能永久卡住。
+ * 0.3.10 起：dsh 0.1.2 每次启动铸造新 launch token，重启后的旧标签页再也进
+ * 不了新进程（reload 撞 index 401）。status 带上 BOOT_ID 代际标记，重启响
+ * 应携带一次性 handoff nonce（经 relay 环境传给继任进程），继任进程的
+ * /dsh-plugin-install/handoff 用它换出本进程的带 token URL，旧标签页
+ * location.replace 过去即可满血复活；桌面端不受影响（重启仍走托盘/应用层）。
  */
-export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.9'
+export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.10'
 
 /**
  * 预装的能力管理插件版本（qinyre/dsh-plugin-capabilities，设置页一级分区「技能与 MCP」，
