@@ -10,6 +10,7 @@ import { disableAllPlugins, enableAllPlugins, listManagedPlugins, restoreBundle,
 import { SidecarLogger } from '../sidecar/sidecar-logger'
 import { SidecarManager } from '../sidecar/sidecar-manager'
 import { resolveRuntime } from '../sidecar/runtime-resolver'
+import { mintSidecarCookie } from '../sidecar/auth'
 
 /**
  * 托盘插件管理冒烟：真实 `dsh plugin add` 安装好/坏两个 mock，守卫崩溃诊断隔离坏的之后，
@@ -85,8 +86,12 @@ describe.skipIf(!harnessReady || !nodeOk)('tray plugin manager smoke', () => {
   async function pollInventory(pred: (entries: readonly RuntimeInventoryEntry[]) => boolean, label: string, timeoutMs = 60_000): Promise<readonly RuntimeInventoryEntry[]> {
     let last: readonly RuntimeInventoryEntry[] = []
     let pollError: unknown
+    // 0.1.2-alpha 起 /api 全量鉴权；本函数只在 boot 稳定（ready）后调用，进入时按当前
+    // 就绪行令牌铸一次 cookie（重启换代由下次调用的重新进入覆盖）。
+    const cookie = await mintSidecarCookie({ port: mgr.port ?? 0, token: mgr.token ?? '' })
     const monitor = new PluginRuntimeMonitor({
       port: () => mgr.port,
+      authCookie: () => cookie,
       onInventory: (entries) => { last = entries },
       onError: (error) => { pollError = error },
     })

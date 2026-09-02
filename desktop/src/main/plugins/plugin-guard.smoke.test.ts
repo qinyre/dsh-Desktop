@@ -10,6 +10,7 @@ import { PluginRuntimeMonitor, type RuntimeInventoryEntry } from './guard-runtim
 import { SidecarLogger } from '../sidecar/sidecar-logger'
 import { SidecarManager } from '../sidecar/sidecar-manager'
 import { resolveRuntime } from '../sidecar/runtime-resolver'
+import { mintSidecarCookie } from '../sidecar/auth'
 
 /**
  * plugin-guard smoke：自制 mock 插件制造四类真实故障（重复 entry id 冲突 / PENDING 依赖
@@ -137,9 +138,13 @@ describe.skipIf(!harnessReady || !nodeOk)('plugin-guard smoke', () => {
     if (mgr.state !== 'ready') await waitForState(['ready'], `${label}: wait ready`, 120_000)
     const port = mgr.port
     expect(port, `${label}: no port after ready`).toBeDefined()
-    const res = await fetch(`http://127.0.0.1:${port}/api/host.describe`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'client-request', rpcId: `guard-smoke-${label}`, method: 'host.describe', payload: {} }),
+    // 0.1.2-alpha 起 /api 全量鉴权：就绪行令牌 → 会话 cookie（auth.ts 真实链路）。
+    const cookie = await mintSidecarCookie({ port: port ?? 0, token: mgr.token ?? '' })
+    expect(cookie, `${label}: no auth cookie`).toBeDefined()
+    const res = await fetch(`http://127.0.0.1:${port}/api/pluginInventory/list`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie === undefined ? {} : { cookie }) },
+      body: JSON.stringify({ type: 'client-request', rpcId: `guard-smoke-${label}`, method: 'pluginInventory/list', payload: { args: {} } }),
     })
     expect(res.status, `${label}: /api unreachable`).toBe(200)
   }
@@ -237,8 +242,11 @@ describe.skipIf(!harnessReady || !nodeOk)('plugin-guard smoke', () => {
     // ── 运行期健康轮询：真实端点（pluginInventory/list 斜杠两段式）。
     let polled: RuntimeInventoryEntry[] | undefined
     let pollError: unknown
+    // 0.1.2-alpha 起 /api 全量鉴权：轮询前按生产接线（index.ts authCookie）铸造 cookie。
+    const monitorCookie = await mintSidecarCookie({ port: mgr.port ?? 0, token: mgr.token ?? '' })
     const monitor = new PluginRuntimeMonitor({
       port: () => mgr.port,
+      authCookie: () => monitorCookie,
       onInventory: (entries) => { polled = [...entries] },
       onError: (error) => { pollError = error },
     })
