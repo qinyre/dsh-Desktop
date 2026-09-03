@@ -31,7 +31,7 @@ DeepSeek Harness ships a first-class Web UI, but it assumes a developer workstat
 - The Web UI runs unmodified: workspaces, sessions, approvals, models, skills, and terminals all work inside the app window, because DSH Desktop is just the shell around `dsh web`.
 - The sidecar is supervised and restarted with exponential backoff, and dsh's append-only session log means a killed process doesn't lose your conversation.
 - Approvals and finished turns raise desktop notifications when the window is hidden or unfocused, and the window can be closed to the tray while long runs continue in the background.
-- Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archiving plus a conversation tick rail ([dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)) — details in [Plugins](#plugins).
+- Four plugins come preinstalled on first launch: the visual plugin market ([dshmarket](https://github.com/dsh-market/dsh-market)), an install-anything "Install" tab ([dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)), a "Skills & MCP" settings section ([dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)), and session archive management ([dsh-plugin-archive-manager](https://github.com/qinyre/dsh-plugin-archive-manager)) — details in [Plugins](#plugins).
 - Built-in plugin guard: four problem classes — conflicts, missing dependencies, plugin errors, and corrupt configuration — are detected before and after launch, both in the service and in the in-page plugin tree; the offending plugin is quarantined so the app still opens, with a dialog naming the plugin and the cause. Safe mode kicks in when no cause can be found, and plugin health keeps being monitored after launch — see [Plugin guard](#plugin-guard).
 - Plugins can be managed straight from the tray: when a plugin failure keeps the page from loading at all, the in-app plugin manager goes down with it — the tray's "Plugins" section needs neither the service nor the page to list every plugin's state, disable or re-enable them individually, enter safe mode manually, or restore packages the guard removed from the launch list.
 - The native title bar follows the Web UI's light/dark theme (exact match on Windows 11, dark/light on Windows 10).
@@ -81,13 +81,11 @@ Adds a "Skills & MCP" section to the settings page, level with Models and Plugin
 
 ![The "Skills" tab](docs/images/capabilities-skills.png)
 
-### Archive & tick rail · [dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)
+### Archive management · [dsh-plugin-archive-manager](https://github.com/qinyre/dsh-plugin-archive-manager)
 
-An "Archive management" section in Settings — browse, preview, and restore archived sessions there, with auto-archive rules as an option — plus a tick rail along the conversation's left edge where every turn is a dash: hover to preview, click to jump.
+An "Archive management" section in Settings — browse, preview, and restore archived sessions there, with auto-archive rules as an option. The plugin was formerly dsh-plugin-atlas; once the official web UI shipped its own conversation ruler, the plugin dropped its tick rail and input history, kept the archive section, and took the new name. Auto-archive rules carry over from the old version.
 
-![Conversation tick rail](docs/images/atlas-rail.png)
-
-![Archive management](docs/images/atlas-archive.png)
+![Archive management](docs/images/archive-manager.png)
 
 > Installing a plugin executes third-party code on your machine (pnpm lifecycle scripts) — same as the dsh CLI. Only install plugins you trust.
 

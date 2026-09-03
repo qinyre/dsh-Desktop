@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
-import { applyMarketConfig, atlasSeeded, bundleSeeded, capabilitiesSeeded, installerSeeded, marketSeeded, seedPendingPlugins } from './market-seed'
+import { applyMarketConfig, archiveManagerSeeded, bundleSeeded, capabilitiesSeeded, installerSeeded, legacyAtlasSeeded, marketSeeded, needsAtlasRetirement, seedPendingPlugins } from './market-seed'
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-desktop-market-seed-'))
 const profileDir = join(root, 'profiles', 'web')
@@ -58,17 +58,30 @@ describe('capabilitiesSeeded', () => {
   })
 })
 
-describe('atlasSeeded', () => {
-  it('tracks dsh-plugin-atlas independently of the other seeds', () => {
+describe('archiveManagerSeeded / needsAtlasRetirement', () => {
+  it('tracks dsh-plugin-archive-manager independently of the other seeds', () => {
     writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dshmarket', 'dsh-plugin-install', 'dsh-plugin-capabilities']))
-    expect(atlasSeeded(root)).toBe(false)
+    expect(archiveManagerSeeded(root)).toBe(false)
     expect(capabilitiesSeeded(root)).toBe(true)
-    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dshmarket', 'dsh-plugin-install', 'dsh-plugin-capabilities', 'dsh-plugin-atlas']))
-    expect(atlasSeeded(root)).toBe(true)
+    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dshmarket', 'dsh-plugin-install', 'dsh-plugin-capabilities', 'dsh-plugin-archive-manager']))
+    expect(archiveManagerSeeded(root)).toBe(true)
   })
   it('false on missing home', () => {
-    expect(atlasSeeded(undefined)).toBe(false)
-    expect(atlasSeeded(join(root, 'no-such-home'))).toBe(false)
+    expect(archiveManagerSeeded(undefined)).toBe(false)
+    expect(archiveManagerSeeded(join(root, 'no-such-home'))).toBe(false)
+  })
+  it('retirement fires only when legacy atlas is present and the new package is not', () => {
+    // 旧包在、新包不在：唯一需要退场的情形
+    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dsh-plugin-atlas']))
+    expect(legacyAtlasSeeded(root)).toBe(true)
+    expect(needsAtlasRetirement(root)).toBe(true)
+    // 两个都在：用户自行装过新包，并存由用户打理
+    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base', 'dsh-plugin-atlas', 'dsh-plugin-archive-manager']))
+    expect(needsAtlasRetirement(root)).toBe(false)
+    // 两个都不在：全新 home，只按新包名预装
+    writeFileSync(join(profileDir, 'package.json'), manifestWith(['@deepseek-ai/dsh-base']))
+    expect(needsAtlasRetirement(root)).toBe(false)
+    expect(needsAtlasRetirement(undefined)).toBe(false)
   })
 })
 

@@ -16,7 +16,7 @@ import { SidecarLogger } from './sidecar/sidecar-logger'
 import { SidecarManager } from './sidecar/sidecar-manager'
 import { resolveRuntime, toUnpackedPath } from './sidecar/runtime-resolver'
 import { ensurePnpmShim } from './plugins/pnpm-shim'
-import { applyMarketConfig, atlasSeeded, ATLAS_SPEC, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, seedBundle, seedPendingPlugins } from './plugins/market-seed'
+import { applyMarketConfig, archiveManagerSeeded, ARCHIVE_MANAGER_SPEC, capabilitiesSeeded, CAPABILITIES_SPEC, DSHMARKET_SPEC, INSTALLER_SPEC, installerSeeded, marketSeeded, needsAtlasRetirement, seedBundle, seedPendingPlugins, type SeedStep } from './plugins/market-seed'
 import { TrayController } from './tray/tray-controller'
 import { TrayPluginSection } from './tray/tray-plugin-section'
 import { UpdaterController } from './updater/updater-controller'
@@ -192,6 +192,28 @@ if (!gotLock) {
     // 下次再试。市场装好后关掉其脱管自重启（applyMarketConfig）。
     if (paths.dshHome !== undefined) {
       const profileDir = join(paths.dshHome, 'profiles', 'web')
+      // 更名迁移：老 home 里还装着 dsh-plugin-atlas 而新归档插件未就位时，先经 CLI
+      // remove 让旧包退场（reconcile 随手把它从 bundles 清单剔除），再预装新包——
+      // 否则两个「归档管理」分区并存。remove 失败则本轮跳过新包预装（下次启动再试），
+      // 宁可晚一轮也绝不制造并存。
+      let archiveStep: SeedStep = {
+        name: 'dsh-plugin-archive-manager', spec: ARCHIVE_MANAGER_SPEC, seeded: archiveManagerSeeded(paths.dshHome),
+      }
+      if (needsAtlasRetirement(paths.dshHome)) {
+        windows?.showActivity('正在迁移归档插件（dsh-plugin-atlas → dsh-plugin-archive-manager）…')
+        const code = await seedBundle({
+          mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,
+          env: sidecarEnv, specs: ['dsh-plugin-atlas'], operation: 'remove',
+          onOutput: (line) => { logger.appendLine(line) },
+        })
+        if (code === 0) {
+          logger.appendLine('[dsh-desktop] legacy dsh-plugin-atlas retired; seeding dsh-plugin-archive-manager')
+          archiveStep = { name: 'dsh-plugin-archive-manager', spec: ARCHIVE_MANAGER_SPEC, seeded: false }
+        } else {
+          logger.appendLine(`[dsh-desktop] legacy dsh-plugin-atlas remove failed (exit ${code}); archive-manager seeding deferred to next launch`)
+          archiveStep = { name: 'dsh-plugin-archive-manager', spec: ARCHIVE_MANAGER_SPEC, seeded: true }
+        }
+      }
       await seedPendingPlugins({
         steps: [
           {
@@ -207,7 +229,7 @@ if (!gotLock) {
           },
           { name: 'dsh-plugin-install', spec: INSTALLER_SPEC, seeded: installerSeeded(paths.dshHome) },
           { name: 'dsh-plugin-capabilities', spec: CAPABILITIES_SPEC, seeded: capabilitiesSeeded(paths.dshHome) },
-          { name: 'dsh-plugin-atlas', spec: ATLAS_SPEC, seeded: atlasSeeded(paths.dshHome) },
+          archiveStep,
         ],
         run: (specs) => seedBundle({
           mode: paths.mode, execPath: process.execPath, repoRoot: paths.repoRoot,

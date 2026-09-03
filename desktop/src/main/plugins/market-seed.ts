@@ -91,16 +91,14 @@ export const INSTALLER_SPEC = 'dsh-plugin-install@0.3.10'
 export const CAPABILITIES_SPEC = 'dsh-plugin-capabilities@0.3.10'
 
 /**
- * 预装的归档与刻度尺插件版本（qinyre/dsh-plugin-atlas，设置页一级分区「归档管理」
- * + 对话区左缘的鱼眼刻度尺；0.2.0 起管理面板从侧边栏抽屉迁入设置页，0.2.1 起输入框 ↑/↓
- * 翻找输入历史，0.2.2 起切换会话时历史回填改为空闲帧步进、↑/↓ 仅在光标位于文本
- * 开头/末尾时触发，0.2.3 起刻度数据改由宿主半边 /rail 路由从持久日志折叠，
- * 不再把整段历史拉进聊天窗口——切换会话恒定只渲染尾窗，0.2.4 起归档列表
- * 行名优先取日志内 session/title（与侧栏同名源），0.2.5 起兼容宿主 inspect
- * 的真实返回形状（meta/events），归档预览与自动归档在真机恢复工作）。纯 HTTP 路由
- * 与 UI 扩展，无重启、无自更新路径，无需任何 patch 配置覆盖。同样只在预装时钉住。
+ * 预装的归档管理插件版本（qinyre/dsh-plugin-archive-manager，设置页一级分区「归档管理」：
+ * 浏览/预览/批量取消归档 + 默认关闭的自动归档规则）。本插件前身为 dsh-plugin-atlas——
+ * 0.3.0 起官方 Web UI 自带对话刻度尺，插件删除刻度尺与输入历史并更名专注归档；自动归档
+ * 规则沿旧路径回读，升级不重配。老 home 里的 dsh-plugin-atlas 在预装前先经 CLI remove
+ * 退场（见 needsAtlasRetirement），避免两个同名分区并存。纯 HTTP 路由与 UI 扩展，
+ * 无重启、无自更新路径，无需任何 patch 配置覆盖。同样只在预装时钉住。
  */
-export const ATLAS_SPEC = 'dsh-plugin-atlas@0.2.5'
+export const ARCHIVE_MANAGER_SPEC = 'dsh-plugin-archive-manager@0.3.0'
 
 /** profile 是否已收录指定 bundle：以 dsh.profile.bundles 为准（reconcile 的落点）。 */
 export function bundleSeeded(dshHome: string | undefined, name: string): boolean {
@@ -131,16 +129,28 @@ export function capabilitiesSeeded(dshHome: string | undefined): boolean {
   return bundleSeeded(dshHome, 'dsh-plugin-capabilities')
 }
 
-/** profile 是否已装归档与刻度尺插件。 */
-export function atlasSeeded(dshHome: string | undefined): boolean {
+/** profile 是否已装归档管理插件。 */
+export function archiveManagerSeeded(dshHome: string | undefined): boolean {
+  return bundleSeeded(dshHome, 'dsh-plugin-archive-manager')
+}
+
+/** profile 是否还装着更名前的 dsh-plugin-atlas。 */
+export function legacyAtlasSeeded(dshHome: string | undefined): boolean {
   return bundleSeeded(dshHome, 'dsh-plugin-atlas')
 }
 
+/** 老 atlas 需要退场的唯一情形：新包未就位而旧包还在。新包已就位说明用户自行
+ * 装过（两个包的并存由用户自己打理），两个都不在则只按新包名预装。 */
+export function needsAtlasRetirement(dshHome: string | undefined): boolean {
+  return legacyAtlasSeeded(dshHome) && !archiveManagerSeeded(dshHome)
+}
+
 /**
- * 经 dsh CLI 预装 bundle，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile
- * 尚不存在）与 reconcile（把声明 bundle 的依赖写回 dsh.profile.bundles）。命令形态与
- * sidecar 完全一致（resolveRuntime），市场的 dshArgv() 在运行期重调 CLI 时也依赖同一形态。
- * `add` 后的 spec 原样透传 pnpm，多 spec 即一次安装（上游 args.ts 不截参数）。
+ * 经 dsh CLI 预装/退场 bundle，而非裸 pnpm：CLI 侧自带 profile 初始化（首启时 profile
+ * 尚不存在）与 reconcile（把声明 bundle 的依赖写回 dsh.profile.bundles，remove 后把
+ * 消失的依赖从 bundles 清单剔除）。命令形态与 sidecar 完全一致（resolveRuntime），
+ * 市场的 dshArgv() 在运行期重调 CLI 时也依赖同一形态。`add`/`remove` 后的 spec 原样
+ * 透传 pnpm，多 spec 即一次操作（上游 args.ts 不截参数）。
  */
 export async function seedBundle(opts: {
   mode: RuntimeMode
@@ -149,11 +159,12 @@ export async function seedBundle(opts: {
   env: NodeJS.ProcessEnv
   resolve?: (id: string) => string
   specs: readonly string[]
+  operation?: 'add' | 'remove'
   onOutput?: (line: string) => void
 }): Promise<number> {
   const { command, args, cwd } = resolveRuntime({
     mode: opts.mode, execPath: opts.execPath, repoRoot: opts.repoRoot, resolve: opts.resolve,
-    dshArgs: ['plugin', '--profile', 'web', 'add', ...opts.specs],
+    dshArgs: ['plugin', '--profile', 'web', opts.operation ?? 'add', ...opts.specs],
   })
   const child = spawn(command, args, { cwd: cwd ?? process.cwd(), env: opts.env, stdio: ['ignore', 'pipe', 'pipe'] })
   for (const stream of [child.stdout, child.stderr]) {

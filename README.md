@@ -31,7 +31,7 @@ DeepSeek Harness 自带一流的 Web UI，但它假定用户具备一套开发�
 - Web UI 原封不动：`dsh web` 的工作区、会话、审批、模型、技能、终端都在应用窗口里，DSH Desktop 只是外层的壳应用。
 - sidecar 有监督重启（指数退避），进程崩溃后自动重新拉起；dsh 的 append-only 会话日志也保证对话不丢。
 - 窗口隐藏或失焦时，等待中的审批和回合结束会发桌面通知；窗口可以关闭到托盘，长任务在后台继续。
-- 首次启动预装四个插件：可视化插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）、任意包名直装的「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）、「技能与 MCP」管理分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）、归档管理与对话刻度尺（[dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)），详见[插件](#插件)。
+- 首次启动预装四个插件：可视化插件市场（[dshmarket](https://github.com/dsh-market/dsh-market)）、任意包名直装的「安装」标签页（[dsh-plugin-install](https://github.com/qinyre/dsh-plugin-install)）、「技能与 MCP」管理分区（[dsh-plugin-capabilities](https://github.com/qinyre/dsh-plugin-capabilities)）、归档管理（[dsh-plugin-archive-manager](https://github.com/qinyre/dsh-plugin-archive-manager)），详见[插件](#插件)。
 - 内建插件运行保障：冲突、依赖缺失、插件自身错误、配置损坏四类问题，无论出现在服务还是页面内的插件树，启动前后都会被自动识别；问题插件被隔离以保证应用照常打开，弹窗说明受影响的插件与原因。原因无法定位时由安全模式兜底，启动后仍持续监测各插件的运行状态，机制详见[插件运行保障](#插件运行保障)。
 - 托盘可以直接管理插件：页面因插件故障打不开时，应用内的插件管理器随之失效，而系统托盘里的「插件管理」不依赖服务与页面——查看各插件启用状态、逐一停用或启用、手动进入安全模式、恢复被移出启动清单的插件包，全部可用。
 - 原生标题栏跟随 Web UI 的明暗主题变色（Windows 11 上与页面同色，Windows 10 上跟随深浅）。
@@ -81,13 +81,11 @@ dsh 的三层插件能力在 DSH Desktop 里全部保留：
 
 ![「技能」标签页](docs/images/capabilities-skills.png)
 
-### 归档与刻度尺 · [dsh-plugin-atlas](https://github.com/qinyre/dsh-plugin-atlas)
+### 归档管理 · [dsh-plugin-archive-manager](https://github.com/qinyre/dsh-plugin-archive-manager)
 
-设置页新增一级分区「归档管理」——归档的会话在这里浏览、预览、一键恢复，自动归档规则可选配；对话区左缘同时新增刻度尺，每格对应一次发言，悬停预览、点击跳转。
+设置页新增一级分区「归档管理」——归档的会话在这里浏览、预览、一键恢复，自动归档规则可选配。插件前身是 dsh-plugin-atlas；官方 Web UI 自带对话刻度尺后，插件删去自带的刻度尺与输入历史、专注归档并更名，老版本配置的自动归档规则升级后自动沿用。
 
-![对话刻度尺](docs/images/atlas-rail.png)
-
-![归档管理](docs/images/atlas-archive.png)
+![归档管理](docs/images/archive-manager.png)
 
 > 安装插件会在本机执行第三方代码（pnpm 生命周期脚本），这一点与 dsh CLI 相同。请只安装来源可信的插件。
 
